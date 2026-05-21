@@ -100,6 +100,7 @@ Track **impact scores**, **local rank percentiles**, verified fixes, and **Evide
 
 ## System Architecture
 
+%%{init: {'flowchart': {'useMaxWidth': true}}}%%
 ```mermaid
 flowchart TB
     subgraph Citizen["📱 Flutter Citizen App"]
@@ -130,6 +131,10 @@ flowchart TB
         D1 --> D2 --> D3
     end
 
+    subgraph Reasoning["🧠 ReasoningAgent"]
+        R1["Threat reasoning · safety heuristics · severity"]
+    end
+
     subgraph Dispatch["🚒 DispatchAgent"]
         G1["Formal municipal notice + case ID"]
         G2["Authority routing e.g. info@sswmb.gos.pk"]
@@ -146,12 +151,12 @@ flowchart TB
     A4 --> B --> C1
     C3 -->|invalid| X["❌ HTTP 400"]
     C3 -->|valid| D1
-    D3 --> G1
+    D3 --> R1 --> G1
     G3 --> H1 --> H2
     G3 --> H3
 ```
 
-**Swarm path:** Citizen payload → **CIRO_Report_API** → **IngestionAgent** → **ContextAgent** → **DispatchAgent** → unified response (Reasoning & AuthorityFinder agents run inline before dispatch in production).
+**Swarm path:** Citizen payload → **CIRO_Report_API** → **IngestionAgent** → **ContextAgent** → **ReasoningAgent** → **DispatchAgent** (invokes `AuthorityFInder` tool) → Final Response
 
 ---
 
