@@ -17,11 +17,11 @@ _Turn every citizen snapshot into a validated, routed, and trackable municipal r
 
 <br/>
 
-<!--
-  BANNER PLACEHOLDER — Uncomment when your designer delivers the hero asset:
+
+  <!-- BANNER PLACEHOLDER — Uncomment when your designer delivers the hero asset: -->
 
   <img src="frontend/assets/outputs/banner.png" alt="SnapCity Hero Banner" width="100%"/>
--->
+
 
 <br/>
 
@@ -269,4 +269,12 @@ SnapCity/
 
 _Google Antigravity Hackathon · SnapCity CIRO_
 
+<div align="center">
+
+_Contributors: Syeda Umaima · Usama Shami · Hassan Raza · Faizan Maqbool · Arham Nabi_
+
+
 </div>
+
+</div>
+
