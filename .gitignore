@@ -1,0 +1,48 @@
+# AI IDE & Workspace Caches (Trae/Codeium)
+.sixth/
+
+# Environment Variables & Secrets (CRITICAL)
+.env
+backend/.env
+frontend/.env
+*.key
+deploy_to_gcp.bat
+*.keystore
+*.jks
+
+# Python / Backend Virtual Environments & Caches
+backend/venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Agent Logs (Visible in your directory)
+agent_traces.*
+backend/agent_traces.*
+*.log
+
+# Flutter / Dart / Android Build Files (THE HEAVY FILES)
+frontend/.dart_tool/
+frontend/.packages
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/build/
+build/
+*.apk
+*.aab
+.gradle/
+frontend/android/.gradle/
+frontend/android/app/build/
+
+# Operating System & IDE Caches
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+.DS_Store
+Thumbs.db
+desktop.ini
