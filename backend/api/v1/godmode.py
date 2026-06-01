@@ -14,6 +14,12 @@ ADMIN_CREDENTIALS = {
     "admin@snapcity.com": "runtime terrors"
 }
 
+# Anchored log file paths matching logger.py virtual footprint
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(os.path.dirname(CURRENT_DIR)) # Root of backend workspace
+JSON_FILE_PATH = os.path.join(BACKEND_DIR, "agent_traces.json")
+LOG_FILE_PATH = os.path.join(BACKEND_DIR, "agent_traces.log")
+
 @router.post("/godmode/auth")
 async def godmode_auth(payload: AuthPayload):
     """Hidden Developer Endpoint for God Mode Authentication."""
@@ -28,12 +34,11 @@ async def godmode_logs(token: str = None, format: str = "text"):
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     if format == "json":
-        log_file_path = "agent_traces.json"
-        if not os.path.exists(log_file_path):
+        if not os.path.exists(JSON_FILE_PATH):
             return {"logs": []}
             
         try:
-            with open(log_file_path, "r", encoding="utf-8", errors="replace") as f:
+            with open(JSON_FILE_PATH, "r", encoding="utf-8", errors="replace") as f:
                 lines = f.readlines()
                 parsed_logs = []
                 for line in lines[-100:]:
@@ -47,12 +52,11 @@ async def godmode_logs(token: str = None, format: str = "text"):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to read JSON logs: {str(e)}")
     else:
-        log_file_path = "agent_traces.log"
-        if not os.path.exists(log_file_path):
+        if not os.path.exists(LOG_FILE_PATH):
             return {"logs": []}
             
         try:
-            with open(log_file_path, "r", encoding="utf-8", errors="replace") as f:
+            with open(LOG_FILE_PATH, "r", encoding="utf-8", errors="replace") as f:
                 lines = f.readlines()
                 return {"logs": [line.strip() for line in lines[-100:]]}
         except Exception as e:

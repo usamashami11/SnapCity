@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -5,7 +6,28 @@ import 'package:geolocator/geolocator.dart';
 import '../models.dart';
 import '../snapcity_theme.dart';
 import '../widgets.dart';
-import '../mock_data.dart';
+import '../services/api_service.dart';
+
+Widget _buildMapImage(String path,
+    {double? height, double? width, BoxFit fit = BoxFit.cover}) {
+  if (path.isEmpty) return Container(color: Colors.grey[200]);
+  if (path.startsWith('http')) {
+    return Image.network(
+      path,
+      height: height,
+      width: width,
+      fit: fit,
+      errorBuilder: (context, error, stackTrace) => Container(
+        color: Colors.grey[200],
+        child: const Icon(Icons.broken_image, color: Colors.grey),
+      ),
+    );
+  } else if (path.startsWith('/') || path.contains(':/')) {
+    return Image.file(File(path), height: height, width: width, fit: fit);
+  } else {
+    return Image.asset(path, height: height, width: width, fit: fit);
+  }
+}
 
 class CivicMapScreen extends StatefulWidget {
   const CivicMapScreen({
@@ -31,15 +53,73 @@ class CivicMapScreen extends StatefulWidget {
 
 class _CivicMapScreenState extends State<CivicMapScreen> {
   String filter = 'Needs proof';
-  late MapIssue selectedIssue;
+  List<CivicCase> _cases = [];
+  CivicCase? selectedCase;
   bool routed = false;
+  bool _isLoading = true;
+  String? _error;
   final MapController _mapController = MapController();
 
   @override
   void initState() {
     super.initState();
-    if (mapIssues.isNotEmpty) {
-      selectedIssue = mapIssues.first;
+    _loadGlobalCases();
+  }
+
+  Future<void> _loadGlobalCases() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final responses = await ApiService().fetchGlobalCases();
+      if (!mounted) return;
+
+      final parsedCases = responses
+          .where((resp) => resp.lat != null && resp.lng != null)
+          .map((resp) => CivicCase(
+                id: resp.caseId,
+                title: resp.issueType.replaceAll('_', ' ').toUpperCase(),
+                location: resp.locationName?.isNotEmpty == true
+                    ? resp.locationName!
+                    : resp.area,
+                status: resp.severity.toLowerCase() == 'high' ? 'Critical' : 'Needs proof',
+                severity: resp.severity,
+                reports: resp.similarReports + 1,
+                strength: resp.confidence,
+                updated: 'Recently',
+                action: 'Ready',
+                image: resp.imageUrl,
+                detail: resp.escalationReason,
+                helper: resp.assignedResponder,
+                lat: resp.lat,
+                lng: resp.lng,
+                duplicateClusterId: resp.duplicateClusterId,
+                similarReportsNearby: resp.similarReports,
+                rewardMessage: resp.rewardMessage,
+                noticeDraft: resp.noticeDraft,
+                authorityName: resp.authority['name'] as String? ?? 'SSWMB',
+                authorityEmail: resp.authority['email'] as String? ?? '',
+                authorityWhatsapp: resp.authority['whatsapp'] as String? ?? '',
+                weather: resp.weather,
+                traffic: resp.traffic,
+              ))
+          .toList();
+
+      setState(() {
+        _cases = parsedCases;
+        if (_cases.isNotEmpty) {
+          selectedCase = _cases.first;
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -48,16 +128,48 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
       return LatLng(
           widget.currentPosition!.latitude, widget.currentPosition!.longitude);
     }
-    return const LatLng(17.3850, 78.4867); // Default to Hyderabad, India
+    return const LatLng(24.9180, 67.0971); // Default to Karachi centroid
+  }
+
+  String _getDistanceText(CivicCase item) {
+    if (widget.currentPosition == null || item.lat == null || item.lng == null) {
+      return 'Calculating distance...';
+    }
+    final meters = Geolocator.distanceBetween(
+      widget.currentPosition!.latitude,
+      widget.currentPosition!.longitude,
+      item.lat!,
+      item.lng!,
+    );
+    if (meters < 1000) {
+      return '${meters.toStringAsFixed(0)} m away';
+    }
+    return '${(meters / 1000).toStringAsFixed(1)} km away';
+  }
+
+  String _getConfirmationsText(CivicCase item) {
+    if (item.reports <= 1) {
+      return 'Reported by 1 citizen';
+    }
+    return 'Reported by ${item.reports} citizens';
   }
 
   @override
   Widget build(BuildContext context) {
-    final visible = mapIssues.where((item) {
-      if (filter == 'Needs proof') return item.status == 'Needs proof';
-      if (filter == 'Critical') return item.status == 'Critical';
+    final visible = _cases.where((item) {
+      if (filter == 'Critical') return item.severity.toLowerCase() == 'high';
       if (filter == 'Fixed') return item.status == 'Fixed';
-      return true;
+      if (filter == 'My area') {
+        if (widget.currentPosition == null || item.lat == null || item.lng == null) return true;
+        final dist = Geolocator.distanceBetween(
+          widget.currentPosition!.latitude,
+          widget.currentPosition!.longitude,
+          item.lat!,
+          item.lng!,
+        );
+        return dist <= 1000; // Within 1 km radius
+      }
+      return item.severity.toLowerCase() != 'high' && item.status != 'Fixed'; // Needs proof
     }).toList();
 
     return ScaffoldWithNav(
@@ -102,11 +214,7 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                         ),
                       ),
                     ...visible.map((item) {
-                      // Map mockup coordinates (x, y) to relative lat/lng for Gulshan
-                      // This is a placeholder mapping since mock data uses screen coordinates
-                      final lat = 24.9180 + (0.5 - item.y) * 0.01;
-                      final lng = 67.0971 + (item.x - 0.5) * 0.01;
-                      final point = LatLng(lat, lng);
+                      final point = LatLng(item.lat!, item.lng!);
 
                       return Marker(
                         point: point,
@@ -114,26 +222,25 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                         height: 40,
                         child: GestureDetector(
                           onTap: () => setState(() {
-                            selectedIssue = item;
+                            selectedCase = item;
                             routed = false;
                           }),
                           child: MapPin(
-                            issue: item,
-                            selected: selectedIssue.caseId == item.caseId,
+                            item: item,
+                            selected: selectedCase?.id == item.id,
                           ),
                         ),
                       );
                     }),
                   ],
                 ),
-                if (routed)
+                if (routed && selectedCase != null && selectedCase!.lat != null && selectedCase!.lng != null)
                   PolylineLayer(
                     polylines: [
                       Polyline(
                         points: [
                           _center,
-                          LatLng(24.9180 + (0.5 - selectedIssue.y) * 0.01,
-                              67.0971 + (selectedIssue.x - 0.5) * 0.01),
+                          LatLng(selectedCase!.lat!, selectedCase!.lng!),
                         ],
                         color: SnapColors.purple,
                         strokeWidth: 4.0,
@@ -162,7 +269,7 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                       ],
                     ),
                   ),
-                  RoundIconButton(icon: Icons.search_rounded, onTap: () {}),
+                  RoundIconButton(icon: Icons.refresh_rounded, onTap: _loadGlobalCases),
                 ],
               ),
             ),
@@ -175,19 +282,31 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
               items: const ['Needs proof', 'Critical', 'Fixed', 'My area'],
               selected: filter,
               onSelected: (value) {
-                final next = mapIssues.firstWhere(
-                  (item) => value == 'My area' || item.status == value,
-                  orElse: () => mapIssues.first,
-                );
+                final filtered = _cases.where((item) {
+                  if (value == 'Critical') return item.severity.toLowerCase() == 'high';
+                  if (value == 'Fixed') return item.status == 'Fixed';
+                  if (value == 'My area') {
+                    if (widget.currentPosition == null || item.lat == null || item.lng == null) return true;
+                    final dist = Geolocator.distanceBetween(
+                      widget.currentPosition!.latitude,
+                      widget.currentPosition!.longitude,
+                      item.lat!,
+                      item.lng!,
+                    );
+                    return dist <= 1000;
+                  }
+                  return item.severity.toLowerCase() != 'high' && item.status != 'Fixed';
+                }).toList();
+                
+                final next = filtered.isNotEmpty ? filtered.first : (_cases.isNotEmpty ? _cases.first : null);
                 setState(() {
                   filter = value;
-                  selectedIssue = next;
-                  routed = false;
+                  if (next != null) {
+                    selectedCase = next;
+                    routed = false;
+                    _mapController.move(LatLng(next.lat!, next.lng!), 15.0);
+                  }
                 });
-                // Center map on issue
-                final lat = 24.9180 + (0.5 - next.y) * 0.01;
-                final lng = 67.0971 + (next.x - 0.5) * 0.01;
-                _mapController.move(LatLng(lat, lng), 15.0);
               },
             ),
           ),
@@ -195,121 +314,146 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
             left: 9,
             right: 9,
             bottom: 86,
-            child: mapIssues.isEmpty
+            child: _isLoading
                 ? const AppCard(
                     radius: 20,
                     padding: EdgeInsets.all(24),
                     child: Center(
-                      child: Text(
-                        'No active infrastructure issues reported\nin your immediate area.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            color: SnapColors.muted,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600),
-                      ),
+                      child: CircularProgressIndicator(color: SnapColors.purple),
                     ),
                   )
-                : AppCard(
-                    radius: 20,
-                    padding: const EdgeInsets.all(9),
-                    child: Column(
-                      children: [
-                        Container(
-                            width: 42,
-                            height: 4,
-                            decoration: BoxDecoration(
-                                color: Colors.black12,
-                                borderRadius: BorderRadius.circular(999))),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: Image.asset(selectedIssue.image,
-                                  width: 76, height: 76, fit: BoxFit.cover),
+                : _error != null
+                    ? AppCard(
+                        radius: 20,
+                        padding: const EdgeInsets.all(24),
+                        child: Center(
+                          child: Text(
+                            'Error loading map data:\n$_error',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 12,
+                                fontFamily: 'monospace'),
+                          ),
+                        ),
+                      )
+                    : selectedCase == null
+                        ? const AppCard(
+                            radius: 20,
+                            padding: EdgeInsets.all(24),
+                            child: Center(
+                              child: Text(
+                                'No active infrastructure issues reported\nin your immediate area.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    color: SnapColors.muted,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600),
+                              ),
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                          child: Text(selectedIssue.title,
-                                              maxLines: 2,
+                          )
+                        : AppCard(
+                            radius: 20,
+                            padding: const EdgeInsets.all(9),
+                            child: Column(
+                              children: [
+                                Container(
+                                    width: 42,
+                                    height: 4,
+                                    decoration: BoxDecoration(
+                                        color: Colors.black12,
+                                        borderRadius: BorderRadius.circular(999))),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: SizedBox(
+                                        width: 76,
+                                        height: 76,
+                                        child: _buildMapImage(selectedCase!.image),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                  child: Text(selectedCase!.title,
+                                                      maxLines: 2,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                          fontSize: 15,
+                                                          fontWeight: FontWeight.w800,
+                                                          height: 1.08))),
+                                              StatusPill(selectedCase!.status),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                              routed
+                                                  ? 'Route ready - walk path set'
+                                                  : _getDistanceText(selectedCase!),
                                               style: const TextStyle(
-                                                  fontSize: 17,
-                                                  fontWeight: FontWeight.w800,
-                                                  height: 1.08))),
-                                      StatusPill(selectedIssue.status),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                      routed
-                                          ? 'Route ready - 7 min walk'
-                                          : selectedIssue.distance,
-                                      style: const TextStyle(
-                                          fontSize: 11,
-                                          color: SnapColors.muted,
-                                          fontWeight: FontWeight.w600)),
-                                  const SizedBox(height: 5),
-                                  Text(selectedIssue.confirmations,
-                                      style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800)),
-                                  Text(
-                                      routed
-                                          ? 'Open camera when you reach it.'
-                                          : 'Fresh proof can strengthen this case.',
-                                      style: const TextStyle(
-                                          fontSize: 9.5,
-                                          color: SnapColors.muted)),
-                                ],
-                              ),
+                                                  fontSize: 11,
+                                                  color: SnapColors.muted,
+                                                  fontWeight: FontWeight.w600)),
+                                          const SizedBox(height: 5),
+                                          Text(_getConfirmationsText(selectedCase!),
+                                              style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w800)),
+                                          Text(
+                                              'Authority: ${selectedCase!.authorityName ?? "SSWMB"}',
+                                              style: const TextStyle(
+                                                  fontSize: 9.5,
+                                                  color: SnapColors.purple,
+                                                  fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 13,
+                                      child: FilledButton(
+                                        onPressed: routed
+                                            ? widget.onSnap
+                                            : () => setState(() => routed = true),
+                                        style: FilledButton.styleFrom(
+                                            backgroundColor: SnapColors.purple,
+                                            minimumSize: const Size.fromHeight(40)),
+                                        child: Text(
+                                            routed ? 'Open camera' : 'Go confirm',
+                                            style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w800)),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      flex: 10,
+                                      child: OutlinedButton(
+                                        onPressed: () => widget.onCase(selectedCase!),
+                                        style: OutlinedButton.styleFrom(
+                                            minimumSize: const Size.fromHeight(40)),
+                                        child: const Text('View case',
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w800)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 13,
-                              child: FilledButton(
-                                onPressed: routed
-                                    ? widget.onSnap
-                                    : () => setState(() => routed = true),
-                                style: FilledButton.styleFrom(
-                                    backgroundColor: SnapColors.purple,
-                                    minimumSize: const Size.fromHeight(40)),
-                                child: Text(
-                                    routed ? 'Open camera' : 'Go confirm',
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800)),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              flex: 10,
-                              child: OutlinedButton(
-                                onPressed: () => widget
-                                    .onCase(caseById(selectedIssue.caseId)!),
-                                style: OutlinedButton.styleFrom(
-                                    minimumSize: const Size.fromHeight(40)),
-                                child: const Text('View case',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                          ),
           ),
         ],
       ),
@@ -318,18 +462,18 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
 }
 
 class MapPin extends StatelessWidget {
-  const MapPin({super.key, required this.issue, required this.selected});
+  const MapPin({super.key, required this.item, required this.selected});
 
-  final MapIssue issue;
+  final CivicCase item;
   final bool selected;
 
   @override
   Widget build(BuildContext context) {
-    final color = issue.status == 'Fixed'
+    final color = item.status == 'Fixed'
         ? SnapColors.success
-        : issue.status == 'Critical'
+        : item.severity.toLowerCase() == 'high'
             ? SnapColors.danger
-            : issue.status == 'Needs proof' && issue.severity == 'Medium'
+            : item.severity.toLowerCase() == 'medium'
                 ? SnapColors.yellow
                 : SnapColors.purple;
     return AnimatedScale(
@@ -352,7 +496,7 @@ class MapPin extends StatelessWidget {
           child: Transform.rotate(
             angle: .78,
             child: Icon(
-                issue.status == 'Fixed'
+                item.status == 'Fixed'
                     ? Icons.check_rounded
                     : Icons.shield_rounded,
                 color: Colors.white,

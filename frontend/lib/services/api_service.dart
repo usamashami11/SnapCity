@@ -145,6 +145,12 @@ class ApiService {
     // Step D: Trap any HTTP 400 validation responses and raise explicit error
     if (response.statusCode == 400) {
       print('❌ Backend rejected image: ${response.body}');
+      try {
+        final body = jsonDecode(response.body);
+        if (body['error'] == 'invalid_civic_image') {
+          throw Exception('invalid_civic_image');
+        }
+      } catch (_) {}
       throw Exception(
           'Invalid Image: Please upload a clear photo of the civic issue.');
     } else if (response.statusCode != 200) {

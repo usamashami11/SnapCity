@@ -495,6 +495,86 @@ class CaseDetailScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const Text('Live Environmental Context',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: SnapColors.purple,
+                        fontWeight: FontWeight.w800)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFF9F6FF), Color(0xFFF1EAFF)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0x3348117F)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.cloud_queue_rounded, color: SnapColors.purple, size: 22),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('WEATHER', style: TextStyle(fontSize: 9, color: SnapColors.muted, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                                  const SizedBox(height: 3),
+                                  Text(item.weather ?? 'Clear and sunny', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: SnapColors.ink)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFF9F6FF), Color(0xFFF1EAFF)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0x3348117F)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.traffic_rounded, color: SnapColors.purple, size: 22),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('TRAFFIC', style: TextStyle(fontSize: 9, color: SnapColors.muted, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                                  const SizedBox(height: 3),
+                                  Text(item.traffic ?? 'Normal flow', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: SnapColors.ink)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 1),
+          AppCard(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 const Text('AI Analysis Summary',
                     style: TextStyle(
                         fontSize: 13,

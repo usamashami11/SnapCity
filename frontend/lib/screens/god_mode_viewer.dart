@@ -210,7 +210,11 @@ class _GodModeLogViewerScreenState extends State<GodModeLogViewerScreen> {
                     ? Colors.greenAccent
                     : agent == 'IngestionAgent'
                         ? Colors.lightBlueAccent
-                        : Colors.white70,
+                        : (agent == 'CIRO_Report_API' || agent == 'CIRO_Orchestrator')
+                            ? Colors.pinkAccent
+                            : agent == 'AuthorityFinderAgent'
+                                ? Colors.tealAccent
+                                : Colors.white70,
       );
     }).toList();
   }

@@ -10,7 +10,12 @@ load_dotenv()
 logger = get_agent_logger("TrafficService")
 
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
-gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY) if GOOGLE_MAPS_API_KEY else None
+gmaps = None
+if GOOGLE_MAPS_API_KEY and not any(placeholder in GOOGLE_MAPS_API_KEY for placeholder in ["YOUR_GOOGLE_MAPS_API_KEY", "YOUR_API_KEY", "placeholder", "google_maps_key"]):
+    try:
+        gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
+    except Exception as e:
+        logger.warning(f"Failed to initialize Google Maps client: {e}")
 
 
 def get_traffic(lat: float, lng: float) -> str:

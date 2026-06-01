@@ -74,6 +74,8 @@ class _CasesScreenState extends State<CasesScreen> {
                   authorityWhatsapp:
                       resp.authority['whatsapp'] as String? ?? '',
                   tags: _buildCaseTags(resp),
+                  weather: resp.weather,
+                  traffic: resp.traffic,
                 ))
             .toList();
 

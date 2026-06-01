@@ -1,8 +1,11 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 import os
+import json
+from utils.logger import JSON_FILE_PATH
 
 from google import genai
 from google.genai import types
@@ -310,7 +313,28 @@ async def process_report(payload: ReportPayload):
             raw_response = ingestion_result.get("raw_model_response", "Raw response not available.")
             logger.warning(f"REJECTED - Ingestion validation failed. Response: {raw_response}")
             logger.info("="*50)
-            raise HTTPException(status_code=400, detail="Invalid Image: Please upload a clear photo of the civic issue.")
+            
+            # Streaming final explicit termination state to NDJSON track file for God Mode integrity
+            try:
+                with open(JSON_FILE_PATH, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "emoji": "❌",
+                        "agent": "CIRO_Orchestrator",
+                        "level": "WARNING",
+                        "status": "REJECTED_NON_CIVIC",
+                        "message": "The uploaded content does not contain an active civic infrastructure hazard."
+                    }, ensure_ascii=False) + "\n")
+            except Exception as write_err:
+                logger.error(f"Failed to write REJECTED_NON_CIVIC trace frame: {write_err}")
+                
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "invalid_civic_image",
+                    "message": "The uploaded content does not contain an active civic infrastructure hazard."
+                }
+            )
             
         # Extract individual agent results
         ingestion_result = swarm_result["ingestion"]

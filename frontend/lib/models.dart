@@ -23,6 +23,8 @@ class CivicCase {
     this.authorityEmail,
     this.authorityWhatsapp,
     this.tags = const [],
+    this.weather,
+    this.traffic,
   });
 
   final String id;
@@ -48,6 +50,8 @@ class CivicCase {
   final String detail;
   final String helper;
   final List<String> tags;
+  final String? weather;
+  final String? traffic;
 }
 
 class MapIssue {

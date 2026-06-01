@@ -68,6 +68,8 @@ class AgentReportResponse {
     required this.noticeDraft,
     required this.imageUrl,
     required this.authority,
+    this.weather,
+    this.traffic,
   });
 
   final String caseId;
@@ -88,6 +90,8 @@ class AgentReportResponse {
   final String noticeDraft;
   final String imageUrl;
   final Map<String, dynamic> authority;
+  final String? weather;
+  final String? traffic;
 
   factory AgentReportResponse.fromJson(Map<String, dynamic> json) {
     final detection = json['detection'] as Map<String, dynamic>? ?? {};
@@ -124,6 +128,8 @@ class AgentReportResponse {
       authority: simulation['authority'] as Map<String, dynamic>? ??
           json['authority'] as Map<String, dynamic>? ??
           {},
+      weather: context['weather_condition'] as String? ?? context['weather'] as String?,
+      traffic: context['traffic_impact'] as String? ?? context['traffic'] as String?,
     );
   }
 }

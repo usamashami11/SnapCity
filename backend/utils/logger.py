@@ -2,6 +2,14 @@ import logging
 import sys
 import json
 from datetime import datetime
+import os
+
+# Calculate absolute paths relative to the utils/logger.py file directory
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Ensures absolute anchoring within backend workspace regardless of where runtime CMD invoker is located
+BACKEND_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+LOG_FILE_PATH = os.path.join(BACKEND_DIR, "agent_traces.log")
+JSON_FILE_PATH = os.path.join(BACKEND_DIR, "agent_traces.json")
 
 # Reconfigure standard output to support UTF-8 Emojis on Windows terminals cleanly
 import io
@@ -49,12 +57,12 @@ logger = logging.getLogger("CIRO_Swarm")
 logger.setLevel(logging.DEBUG)
 
 # Standard Text File handler
-file_handler = logging.FileHandler("agent_traces.log", mode='a', encoding='utf-8')
+file_handler = logging.FileHandler(LOG_FILE_PATH, mode='a', encoding='utf-8')
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(AgentFormatter())
 
 # Structured JSON File handler (NDJSON / JSON lines)
-json_handler = logging.FileHandler("agent_traces.json", mode='a', encoding='utf-8')
+json_handler = logging.FileHandler(JSON_FILE_PATH, mode='a', encoding='utf-8')
 json_handler.setLevel(logging.DEBUG)
 json_handler.setFormatter(JsonFormatter())
 

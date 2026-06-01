@@ -326,6 +326,8 @@ class _SnapCityShellState extends State<SnapCityShell> {
           authorityName: map['authority_name'],
           authorityEmail: map['authority_email'],
           authorityWhatsapp: map['authority_whatsapp'],
+          weather: map['weather'],
+          traffic: map['traffic'],
         );
       }).toList();
       caseItems = _myCases; // Update global mock list for now
@@ -378,6 +380,8 @@ class _SnapCityShellState extends State<SnapCityShell> {
               'authority_name': c.authorityName,
               'authority_email': c.authorityEmail,
               'authority_whatsapp': c.authorityWhatsapp,
+              'weather': c.weather,
+              'traffic': c.traffic,
             }))
         .toList();
     await prefs.setStringList('user_cases', casesJson);
@@ -488,7 +492,7 @@ class _SnapCityShellState extends State<SnapCityShell> {
           status: 'Reported',
           severity: response.severity,
           reports: 1,
-          strength: 10,
+          strength: response.confidence,
           updated: 'Just now',
           action: 'Awaiting Verification',
           image: _capturedImagePath ?? 'assets/pothole-camera.png',
@@ -498,6 +502,8 @@ class _SnapCityShellState extends State<SnapCityShell> {
           authorityName: response.authority['name'],
           authorityEmail: response.authority['email'],
           authorityWhatsapp: response.authority['whatsapp'],
+          weather: response.weather,
+          traffic: response.traffic,
         );
         _myCases.insert(0, newCase);
 
@@ -514,10 +520,13 @@ class _SnapCityShellState extends State<SnapCityShell> {
       });
       if (mounted) {
         final errorMsg = e.toString().replaceFirst('Exception: ', '');
+        final displayMsg = errorMsg == 'invalid_civic_image'
+            ? 'Please upload a valid civic image.'
+            : errorMsg;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              errorMsg,
+              displayMsg,
               style: const TextStyle(
                   fontWeight: FontWeight.bold, color: Colors.white),
             ),
