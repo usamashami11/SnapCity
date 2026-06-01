@@ -4,9 +4,13 @@ import json
 from datetime import datetime
 
 # Reconfigure standard output to support UTF-8 Emojis on Windows terminals cleanly
+import io
 try:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    elif hasattr(sys.stdout, 'buffer'):
+        # Fallback: wrap raw buffer with utf-8 TextIOWrapper
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 except Exception:
     pass
 

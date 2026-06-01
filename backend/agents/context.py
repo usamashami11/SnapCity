@@ -99,7 +99,7 @@ class ContextAgent:
             "Include your detailed step-by-step internal thoughts explaining your fusion process."
         )
 
-        logger.info(f"[{report_id}] Preparing Google GenAI model 'gemini-2.5-flash' Signal Fusion payload...")
+        logger.info(f"[{report_id}] Preparing signal fusion payload for primary model 'gemini-3.1-flash-lite' (fallback: 'gemini-2.5-flash')...")
         logger.debug(f"[{report_id}] RAW PROMPT SENT TO GEMINI:\n{raw_prompt}")
 
         try:

@@ -1,15 +1,19 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
+import os
+
+from google import genai
+from google.genai import types
 
 from agents.ingestion import IngestionAgent
 from agents.context import ContextAgent
 from agents.reasoning import ReasoningAgent
 from agents.dispatch import DispatchAgent
-from agents.authority_finder import AuthorityFinderAgent
+from services.authority_finder import AuthorityFinderService
 from utils.logger import get_agent_logger
 from services.database import save_case, get_all_cases
-from datetime import datetime
 
 router = APIRouter()
 logger = get_agent_logger("CIRO_Report_API")
@@ -19,6 +23,7 @@ class GPSCoords(BaseModel):
     lat: float
     lng: float
 
+
 class ReportPayload(BaseModel):
     report_id: str
     timestamp: Optional[str] = None
@@ -27,12 +32,255 @@ class ReportPayload(BaseModel):
     voice_note_transcript: Optional[str] = ""
     location_name: Optional[str] = None
 
-# Initialize Swarm Agents
+
+# Initialize Swarm Agents & Services
 ingestion_agent = IngestionAgent()
 context_agent = ContextAgent()
 reasoning_agent = ReasoningAgent()
 dispatch_agent = DispatchAgent()
-authority_finder_agent = AuthorityFinderAgent()
+authority_service = AuthorityFinderService()
+
+# Global variable to track active report ID across tools
+current_report_id = "unknown"
+
+
+# Define Tools for Gemini Supervisor
+def validate_evidence(image_url: str, voice_note_transcript: str, lat: float, lng: float) -> dict:
+    """Validates if the image and transcript describe a genuine civic infrastructure issue."""
+    logger.info("🤖 [Supervisor] Calling Tool: validate_evidence")
+    ingestion_logger = get_agent_logger("IngestionAgent")
+    ingestion_logger.info("Supervisor requested evidence analysis. Ingesting payload details...")
+    
+    result = ingestion_agent.process({
+        "report_id": current_report_id,
+        "image_url": image_url,
+        "voice_note_transcript": voice_note_transcript,
+        "gps": {"lat": lat, "lng": lng}
+    })
+    return result
+
+
+def fuse_context(classification: str, lat: float, lng: float) -> dict:
+    """Fuses coordinates with environmental telemetry (weather, traffic) and queries duplicate clusters."""
+    logger.info("🤖 [Supervisor] Calling Tool: fuse_context")
+    context_logger = get_agent_logger("ContextAgent")
+    context_logger.info("Supervisor requested signal fusion. Initiating telemetry APIs...")
+    
+    result = context_agent.process(
+        {"report_id": current_report_id, "gps": {"lat": lat, "lng": lng}},
+        {"classification": classification}
+    )
+    return result
+
+
+def find_authority_routing(classification: str, area: str, lat: float, lng: float) -> dict:
+    """Routes the reported issue to the matching Pakistan civic department based on coordinates and classification."""
+    logger.info("🤖 [Supervisor] Calling Tool: find_authority_routing")
+    authority_logger = get_agent_logger("AuthorityFinderAgent")
+    authority_logger.info("Supervisor requested routing path. Checking geo-boundary dictionary...")
+    
+    result = authority_service.process(
+        {"report_id": current_report_id, "gps": {"lat": lat, "lng": lng}},
+        {"classification": classification},
+        {"area": area}
+    )
+    return result
+
+
+def evaluate_threat_severity(classification: str, weather_condition: str, traffic_impact: str, area: str, similar_reports: int) -> dict:
+    """Evaluates danger levels and dynamic severity using safety heuristics."""
+    logger.info("🤖 [Supervisor] Calling Tool: evaluate_threat_severity")
+    reasoning_logger = get_agent_logger("ReasoningAgent")
+    reasoning_logger.info("Supervisor requested danger analysis. Traversing risk matrix check...")
+    
+    result = reasoning_agent.process(
+        {"classification": classification},
+        {
+            "weather_condition": weather_condition,
+            "traffic_impact": traffic_impact,
+            "area": area,
+            "similar_reports_nearby": similar_reports
+        }
+    )
+    return result
+
+
+def simulate_dispatch(classification: str, area: str, lat: float, lng: float, severity: str, justification: str, authority: dict) -> dict:
+    """Generates municipal notice text, templates, ETA and civic rewards."""
+    logger.info("🤖 [Supervisor] Calling Tool: simulate_dispatch")
+    dispatch_logger = get_agent_logger("DispatchAgent")
+    dispatch_logger.info("Supervisor requested dispatch action. Compiling copy templates...")
+    
+    result = dispatch_agent.process(
+        {"report_id": current_report_id, "gps": {"lat": lat, "lng": lng}},
+        {"classification": classification},
+        {"area": area},
+        {"severity_level": severity, "justification": justification},
+        authority
+    )
+    return result
+
+
+class SupervisorAgent:
+    """Supervisor Agent coordinating the swarm via Gemini function calling."""
+
+    def process(self, payload: dict) -> dict:
+        global current_report_id
+        current_report_id = payload.get("report_id", "unknown")
+        
+        lat = payload["gps"]["lat"]
+        lng = payload["gps"]["lng"]
+        image_url = payload["image_url"]
+        transcript = payload.get("voice_note_transcript", "")
+        
+        logger.info(f"🤖 [Supervisor] Starting dynamic orchestration loop for report: {current_report_id}")
+        
+        prompt = (
+            f"You are the SnapCity Swarm Supervisor. Process the new civic report (Report ID: {current_report_id}) at Lat={lat}, Lng={lng}.\n"
+            f"Image URL: {image_url}\n"
+            f"Voice Note Transcript: '{transcript}'\n\n"
+            "Execution Instructions:\n"
+            "1. Call `validate_evidence` using the image, transcript, and coordinates.\n"
+            "2. Read the tool response. If `is_valid_civic_issue` is False, STOP immediately and reply that the report is rejected. DO NOT call any other tools.\n"
+            "3. If valid, call `fuse_context` to gather weather, traffic, and duplicate clusters.\n"
+            "4. Call `find_authority_routing` using the classification and area from context.\n"
+            "5. Call `evaluate_threat_severity` using the classification and environmental telemetry.\n"
+            "6. Call `simulate_dispatch` to generate tracking IDs, notices, templates, and civic rewards.\n"
+            "7. Output a summary confirming all steps are successfully complete."
+        )
+
+        tools = [validate_evidence, fuse_context, find_authority_routing, evaluate_threat_severity, simulate_dispatch]
+        
+        client = None
+        try:
+            client = genai.Client()
+        except Exception as e:
+            logger.warning(f"Failed to initialize Gemini Client for Supervisor: {e}. Activating deterministic global fallback.")
+            return self._fallback_orchestration(payload)
+            
+        messages = [types.Content(role="user", parts=[types.Part.from_text(text=prompt)])]
+        
+        results = {
+            "ingestion": None,
+            "context": None,
+            "authority": None,
+            "reasoning": None,
+            "dispatch": None
+        }
+        
+        try:
+            # Run the agentic tool loop
+            for _ in range(10):  # Hard limit to prevent loops
+                response = None
+                try:
+                    response = client.models.generate_content(
+                        model='gemini-3.1-flash-lite',
+                        contents=messages,
+                        config=types.GenerateContentConfig(
+                            tools=tools,
+                            temperature=0.1,
+                            system_instruction="You are the SnapCity Supervisor Agent. You must call tools in sequence to process civic reports."
+                        )
+                    )
+                except Exception as model_err:
+                    logger.warning(f"Supervisor call failed on primary model: {model_err}. Falling back to 'gemini-2.5-flash'...")
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=messages,
+                        config=types.GenerateContentConfig(
+                            tools=tools,
+                            temperature=0.1,
+                            system_instruction="You are the SnapCity Supervisor Agent. You must call tools in sequence to process civic reports."
+                        )
+                    )
+                
+                # Check for function calls
+                if response.function_calls:
+                    # Append the model's turn
+                    messages.append(response.candidates[0].content)
+                    
+                    tool_response_parts = []
+                    for function_call in response.function_calls:
+                        name = function_call.name
+                        args = function_call.args
+                        
+                        logger.info(f"🤖 [Supervisor] Executing tool call: {name}")
+                        
+                        if name == "validate_evidence":
+                            res = validate_evidence(**args)
+                            results["ingestion"] = res
+                            if not res.get("is_valid_civic_issue", True):
+                                return {"is_valid": False, "ingestion": res}
+                        elif name == "fuse_context":
+                            res = fuse_context(**args)
+                            results["context"] = res
+                        elif name == "find_authority_routing":
+                            res = find_authority_routing(**args)
+                            results["authority"] = res
+                        elif name == "evaluate_threat_severity":
+                            res = evaluate_threat_severity(**args)
+                            results["reasoning"] = res
+                        elif name == "simulate_dispatch":
+                            res = simulate_dispatch(**args)
+                            results["dispatch"] = res
+                        else:
+                            res = {"error": f"Unknown tool: {name}"}
+                            
+                        tool_response_parts.append(
+                            types.Part.from_function_response(
+                                name=name,
+                                response={"result": res}
+                            )
+                        )
+                    messages.append(types.Content(role="tool", parts=tool_response_parts))
+                else:
+                    logger.info("🤖 [Supervisor] Tool loop completed. Finalizing report packaging.")
+                    break
+            
+            if results["ingestion"] and results["context"] and results["authority"] and results["reasoning"] and results["dispatch"]:
+                return {"is_valid": True, **results}
+            else:
+                raise ValueError("Swarm loop finished but some tool results are missing.")
+                
+        except Exception as err:
+            logger.error(f"Supervisor loop execution failed: {err}. Triggering global fallback.")
+            return self._fallback_orchestration(payload)
+
+    def _fallback_orchestration(self, payload: dict) -> dict:
+        logger.info("🤖 [Supervisor] Running linear fallback orchestration pipeline...")
+        try:
+            # 1. Ingestion
+            ingestion_result = ingestion_agent.process(payload)
+            if not ingestion_result.get("is_valid_civic_issue", True):
+                return {"is_valid": False, "ingestion": ingestion_result}
+                
+            # 2. Context
+            context_result = context_agent.process(payload, ingestion_result)
+            
+            # 3. Authority
+            authority_result = authority_service.process(payload, ingestion_result, context_result)
+            
+            # 4. Reasoning
+            reasoning_result = reasoning_agent.process(ingestion_result, context_result)
+            
+            # 5. Dispatch
+            dispatch_result = dispatch_agent.process(payload, ingestion_result, context_result, reasoning_result, authority_result)
+            
+            return {
+                "is_valid": True,
+                "ingestion": ingestion_result,
+                "context": context_result,
+                "authority": authority_result,
+                "reasoning": reasoning_result,
+                "dispatch": dispatch_result
+            }
+        except Exception as e:
+            logger.error(f"Critical fallback orchestration failure: {e}")
+            raise e
+
+
+supervisor_agent = SupervisorAgent()
+
 
 @router.get("/cases")
 async def get_cases():
@@ -43,52 +291,38 @@ async def get_cases():
         logger.error(f"Error fetching cases: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/report")
 async def process_report(payload: ReportPayload):
     logger.info("="*50)
-    logger.info(f"NEW INCIDENT RECEIVED IN API: {payload.report_id}")
+    logger.info(f"NEW INCIDENT RECEIVED: {payload.report_id}")
     logger.info("="*50)
     
     payload_dict = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     
     try:
-        # Step 1: Multi-Modal Ingestion
-        ingestion_result = ingestion_agent.process(payload_dict)
+        # Execute orchestrator
+        swarm_result = supervisor_agent.process(payload_dict)
         
-        # Strict Rejection Policy Guard
-        if not ingestion_result.get("is_valid_civic_issue", True):
+        # Check validation rejection
+        if not swarm_result.get("is_valid", True):
+            ingestion_result = swarm_result["ingestion"]
             raw_response = ingestion_result.get("raw_model_response", "Raw response not available.")
-            logger.warning(f"REJECTING - Raw model response from IngestionAgent: {raw_response}")
-            logger.warning(f"Incident {payload.report_id} REJECTED: Invalid civic issue content.")
+            logger.warning(f"REJECTED - Ingestion validation failed. Response: {raw_response}")
             logger.info("="*50)
             raise HTTPException(status_code=400, detail="Invalid Image: Please upload a clear photo of the civic issue.")
+            
+        # Extract individual agent results
+        ingestion_result = swarm_result["ingestion"]
+        context_result = swarm_result["context"]
+        authority_result = swarm_result["authority"]
+        reasoning_result = swarm_result["reasoning"]
+        dispatch_result = swarm_result["dispatch"]
         
-        # Step 2: Context & Triangulation (Signal Fusion)
-        context_result = context_agent.process(payload_dict, ingestion_result)
-        
-        # Step 3: Reasoning & Severity
-        reasoning_result = reasoning_agent.process(ingestion_result, context_result)
-        
-        # Step 3.5: Find the best authority routing path for this report
-        authority_result = authority_finder_agent.process(
-            payload_dict,
-            ingestion_result,
-            context_result,
-        )
-
-        # Step 4: Action Simulator & Dispatch
-        dispatch_result = dispatch_agent.process(
-            payload_dict,
-            ingestion_result,
-            context_result,
-            reasoning_result,
-            authority_result,
-        )
-
-        logger.info(f"Incident {payload.report_id} Orchestration Complete.")
+        logger.info(f"Incident {payload.report_id} Orchestration Successful.")
         logger.info("="*50)
 
-        # Construct Final Response
+        # Assemble output payload preserving 100% contract compatibility
         response_data = {
             "report_id": payload.report_id,
             "timestamp": payload.timestamp or datetime.utcnow().isoformat(),
@@ -97,11 +331,11 @@ async def process_report(payload: ReportPayload):
             "location_name": payload_dict.get("location_name"),
             "status": "success",
             
-            # Legacy fields for backwards compatibility
+            # Legacy keys
             "classification": ingestion_result["classification"],
             "dispatch_simulation": dispatch_result,
             
-            # Fields matching the Flutter app sample output layout
+            # Layout mappings matching the mobile client
             "detection": {
                 "issue_type": ingestion_result["classification"].lower().replace(" ", "_").replace("/", "_"),
                 "confidence_score": ingestion_result["confidence"],
@@ -121,11 +355,13 @@ async def process_report(payload: ReportPayload):
             "authority": dispatch_result.get("authority", authority_result)
         }
         
-        # Phase 1: Persistence
+        # Persist to database
         save_case(response_data)
         
         return response_data
 
+    except HTTPException as http_err:
+        raise http_err
     except Exception as e:
         logger.error(f"Error during orchestration: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Orchestration Failed: {str(e)}")

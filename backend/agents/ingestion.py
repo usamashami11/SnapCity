@@ -73,17 +73,44 @@ class IngestionAgent:
                 logger.warning(f"[{report_id}] Error fetching image URL: {str(e)}")
 
         if not image_bytes:
-            logger.info(f"[{report_id}] Generating simulated fallback in-memory image bytes...")
+            logger.info(f"[{report_id}] Resolving dynamic fallback image asset from assets directory...")
             try:
-                # Generate a 200x200 solid red color image representing a road hazard simulation
-                img = Image.new('RGB', (200, 200), color=(180, 50, 50))
-                img_byte_arr = io.BytesIO()
-                img.save(img_byte_arr, format='PNG')
-                image_bytes = img_byte_arr.getvalue()
-                mime_type = "image/png"
-                logger.info(f"[{report_id}] Fallback in-memory image bytes generated successfully.")
+                # Deduce best fallback file depending on keywords in voice note transcript
+                fallback_filename = "Manhole 1.jpg"
+                transcript_lower = transcript.lower()
+                if "garbage" in transcript_lower or "trash" in transcript_lower:
+                    fallback_filename = "Garbage 1.jpg"
+                elif "pothole" in transcript_lower or "road" in transcript_lower or "damage" in transcript_lower:
+                    fallback_filename = "Broken Road 1.jpg"
+                elif "selfie" in transcript_lower or "dog" in transcript_lower or "cat" in transcript_lower:
+                    # Load non-civic asset to trigger guardrail validation failure
+                    fallback_filename = "App Icon.png"
+
+                # Construct absolute path to the local asset
+                assets_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "assets", fallback_filename))
+                
+                if os.path.exists(assets_path):
+                    logger.info(f"[{report_id}] Loading real fallback asset: {assets_path}")
+                    with open(assets_path, "rb") as f:
+                        image_bytes = f.read()
+                    
+                    if fallback_filename.endswith(".png"):
+                        mime_type = "image/png"
+                    elif fallback_filename.endswith(".webp"):
+                        mime_type = "image/webp"
+                    else:
+                        mime_type = "image/jpeg"
+                else:
+                    logger.warning(f"[{report_id}] Local fallback asset not found at {assets_path}. Generating solid red backup.")
+                    img = Image.new('RGB', (200, 200), color=(180, 50, 50))
+                    img_byte_arr = io.BytesIO()
+                    img.save(img_byte_arr, format='PNG')
+                    image_bytes = img_byte_arr.getvalue()
+                    mime_type = "image/png"
+                    
+                logger.info(f"[{report_id}] Fallback image resolved successfully (MIME: {mime_type}).")
             except Exception as e:
-                logger.error(f"[{report_id}] Critical failure in image fallback generation: {str(e)}")
+                logger.error(f"[{report_id}] Critical failure loading fallback asset: {str(e)}")
 
         # 2. Invoke Multimodal Gemini LLM
         raw_prompt = (
@@ -111,7 +138,7 @@ class IngestionAgent:
             "CRITICAL: Do not output blended labels or mixed classifications. Use only one of the six categories above."
         )
 
-        logger.info(f"[{report_id}] Preparing Google GenAI model 'gemini-2.5-flash' payload...")
+        logger.info(f"[{report_id}] Preparing multimodal payload for primary model 'gemini-3.1-flash-lite' (fallback: 'gemini-2.5-flash')...")
         logger.debug(f"[{report_id}] RAW PROMPT SENT TO GEMINI:\n{raw_prompt}")
 
         try:

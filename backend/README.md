@@ -8,17 +8,25 @@
 
 **SnapCity CIRO** (Crisis Intelligence & Response Orchestrator) is a state-of-the-art, fully generative multi-agent AI system built using the standard Python **Google GenAI / Gemini** ecosystem. 
 
-CIRO replaces legacy, rule-based keyword triggers with a cooperative swarm of specialized AI agents. It ingests multi-source signals (images, coordinates, audio transcripts), fuses them in real-time with live environmental telemetry, evaluates the threat using safety heuristics, and simulates emergency response allocations in real-time.
+CIRO coordinates a dynamic, autonomous **Agentic Swarm** overseen by a central **Supervisor Agent** using Gemini function-calling (Tool-Use). Instead of a rigid, hardcoded sequential pipeline, the Supervisor acts as the "brain"—analyzing the incoming report and deciding dynamically which sub-agent tool to run, in what order, and when to halt execution (providing immediate guardrail rejections).
 
 ```mermaid
 graph TD
     A[Citizen App Payload] -->|POST /api/v1/report| B(CIRO API v1 Router)
-    B -->|Ingest Voice & Image| C[IngestionAgent]
-    C -->|Extract Category & Evidence| D[ContextAgent]
-    D -->|Signal Fusion: Telemetry + Duplicates| E[ReasoningAgent]
-    E -->|Safety Heuristics & Severity| F[DispatchAgent]
-    F -->|Responder Assignment & Simulated Action| G[FastAPI Response Assembler]
-    G -->|Unified Response Layout| H[Citizen/Flutter Client]
+    B -->|Instantiate Payload| C{SupervisorAgent <br> Gemini LLM Brain}
+    C -->|Tool Call: validate_evidence| D[IngestionAgent <br> Gemini Vision]
+    D -->|Tool Response| C
+    C -->|Rejection Guardrail Stop if is_valid is False| X[Reject: HTTP 400]
+    C -->|Tool Call: fuse_context| E[ContextAgent <br> Signal Fusion]
+    E -->|Tool Response| C
+    C -->|Tool Call: find_authority_routing| F[AuthorityFinderService]
+    F -->|Tool Response| C
+    C -->|Tool Call: evaluate_threat_severity| G[ReasoningAgent]
+    G -->|Tool Response| C
+    C -->|Tool Call: simulate_dispatch| H[DispatchAgent]
+    H -->|Tool Response| C
+    C -->|Orchestration Complete Summary| I[FastAPI Response Assembler]
+    I -->|Unified Response Layout| J[Citizen/Flutter Client]
 ```
 
 
@@ -52,16 +60,18 @@ GEMINI_API_KEY=your_google_api_key_here
 
 ---
 
-## 🤖 The Cooperative AI Swarm
+## 🤖 The Agentic Swarm & Tool-Use Architecture
 
-CIRO coordinates a sequential **4-Tier Swarm** where each agent acts as a specialized department microservice:
+CIRO organizes your AI agents as a **Dynamic Tool-Calling Swarm** overseen by a central Supervisor Agent. Instead of hardcoding their relationships, sub-agents are exposed as Python tools, allowing the Supervisor (using Gemini Function-Calling) to coordinate them autonomously:
 
-| Agent Name | Emojis | Department Role | Primary Tools Mapped |
+| Agent / Service Name | Emojis | Department Role | Primary Tools / Actions Mapped |
 | :--- | :---: | :--- | :--- |
-| **Ingestion Agent** | `👁️` | Multimodal parser. Extracts core categories, verbal intents, and handles image decodes. | • `Multimodal GenAI Tool` (Gemini: multimodal analysis)<br>• `Image Loader Tool` (Pillow: mock image bytes simulator) |
-| **Context Agent** | `🌐` | Signal fusion engine. Aggregates GPS coordinates with environmental sensors. | • `Weather Sensor Tool` (Mock API)<br>• `Traffic Telemetry Tool` (Mock API)<br>• `Spatial Triangulation Tool` (Cluster matching) |
-| **Reasoning Agent** | `🧠` | Intellectual core. Evaluates combined factors against safety heuristics to calculate dynamic threat severities. | • `Cognitive Risk Matrix Tool` (Gemini: safety heuristics parser) |
-| **Dispatch Agent** | `🚒` | Operations planner. Assigns municipal responders, simulates action timelines, and drafts notifications. | • `Action Generator Tool` (Gemini: notification & rewards engine) |
+| **Supervisor Agent** | `🤖` | **The Brain**. Evaluates the active request, calls sub-agents sequentially, processes rejections, and compiles the final contract. | • Coordinates the active tool-calling loop<br>• Controls the early-exit validation guardrail |
+| **Ingestion Agent** | `👁️` | Multimodal parser. Extracts core categories, verbal intents, and analyzes visual imagery. | • `validate_evidence` (Gemini: multimodal analysis)<br>• Uses smart fallback images matching transcript keywords for offline testing |
+| **Context Agent** | `🌐` | Signal fusion engine. Aggregates GPS coordinates with environmental weather and traffic data. | • `fuse_context` (Fuses telemetry sensors)<br>• Connects to standard weather & traffic feeds |
+| **Reasoning Agent** | `🧠` | Intellectual core. Evaluates combined environmental threat vectors using safety heuristics. | • `evaluate_threat_severity` (Calculates dynamic hazard levels) |
+| **Dispatch Agent** | `🚒` | Operations planner. Assigns municipal responders, simulates action timelines, and drafts notifications. | • `simulate_dispatch` (Compiles templates, Rewards and ETA) |
+| **Authority Finder** | `📝` | Geo-boundary router. Matches Pakistan municipal agencies deterministically. | • Relocated to `services/AuthorityFinderService` for clean architectural separation |
 
 ### 🛡️ Safety Fail-Safe & API Redundancy
 * **GenAI Fallback Sequence**: When evaluating decisions, the swarm utilizes a robust dual-fallback tier. It compiles structured schemas via `gemini-3.1-flash-lite` (primary free model), seamlessly downgrades to `gemini-2.5-flash` in case of rate limits, and automatically routes to a **deterministic local backup rule-path** if the internet or API is fully unreachable. Your city backend never halts!
@@ -176,9 +186,12 @@ To upgrade the CIRO system from simulated MVP data to real-world production tele
           return data["weather"][0]["main"] # e.g. "Rain", "Thunderstorm"
   ```
 
-### 2. Traffic Telemetry (`services/mock_traffic.py`)
-* **Current Mock**: Returns a static string `"Heavy"`.
-* **Production Path**: Connect it to the **Google Maps Distance Matrix API** or **HERE Traffic API** to calculate real-world travel slowdown delays:
+### 2. Real-World Traffic Telemetry & Geocoding (`services/traffic.py`)
+* **Implemented Setup**: CIRO now uses a production-ready **dual-provider reverse lookup engine**:
+  1. **Primary**: **OpenStreetMap (OSM) Nominatim API** (100% free, keyless) to reverse-geocode coordinates into real roads (e.g. `Rashid Minhas Road`) and compute dynamic density metrics depending on road classification (`primary`, `residential`, etc.).
+  2. **Secondary Fallback**: **Google Maps Directions & Geocoding APIs** (active if `GOOGLE_MAPS_API_KEY` is added to `.env` and OSM fails).
+  3. **Tertiary Fallback**: Safe fallback heuristic values to guarantee service uptime.
+* **Production Path**: You can connect this class directly to the paid **Google Maps Distance Matrix API** to measure duration-in-traffic delays:
   ```python
   import httpx
   async def get_traffic(lat: float, lng: float) -> str:

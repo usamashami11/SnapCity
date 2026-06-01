@@ -113,7 +113,7 @@ class DispatchAgent:
             "Provide your detailed internal reasoning steps."
         )
 
-        logger.info(f"[{report_id}] Preparing Google GenAI model 'gemini-2.5-flash' Dispatch Simulation payload...")
+        logger.info(f"[{report_id}] Preparing dispatch simulation payload for primary model 'gemini-3.1-flash-lite' (fallback: 'gemini-2.5-flash')...")
         logger.debug(f"[{report_id}] RAW PROMPT SENT TO GEMINI:\n{raw_prompt}")
 
         try:

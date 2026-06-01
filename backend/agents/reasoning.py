@@ -76,7 +76,7 @@ class ReasoningAgent:
             "provide a clear escalation reason, write a formal justification paragraph, and elaborate on your step-by-step internal thoughts."
         )
 
-        logger.info("Preparing Google GenAI model 'gemini-2.5-flash' Danger Analysis payload...")
+        logger.info("Preparing danger analysis payload for primary model 'gemini-3.1-flash-lite' (fallback: 'gemini-2.5-flash')...")
         logger.debug(f"RAW PROMPT SENT TO GEMINI:\n{raw_prompt}")
 
         try:

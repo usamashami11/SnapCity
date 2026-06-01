@@ -23,16 +23,16 @@ async def test_dynamic_real_image():
 
     # We provide a REAL public photograph of a damaged asphalt road pothole from Wikipedia Commons
     # real_pothole_image = "https://upload.wikimedia.org/wikipedia/commons/e/e0/Pothole.jpg"
-    real_pothole_image = "https://images.unsplash.com/photo-1657811146537-90d7d8133224?fm=jpg"
+    real_trash_image = "https://images.unsplash.com/photo-1626005596519-76fb9ee12d26?fm=jpg"
 
     payload = {
-        "report_id": "rep_real_pothole_101",
-        "image_url": real_pothole_image,
+        "report_id": "rep_real_trash_100",
+        "image_url": real_trash_image,
         "gps": {
-            "lat": 33.6107,
-            "lng": 73.0543
+            "lat": 33.4958,
+            "lng": 73.1056
         },
-        "voice_note_transcript": "There is a massive road damage pothole right in the center of the lane. Please send a crew."
+        "voice_note_transcript": "I would like to urgently report an overflowing and unhygienic trash can in our area that is creating a foul odor and attracting pests. Could you please send a sanitation team to empty, wash, and disinfect this bin as soon as possible?"
     }
 
     print(f"\nSending payload with REAL Image URL:\n{json.dumps(payload, indent=2)}")
