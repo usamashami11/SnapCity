@@ -345,12 +345,15 @@ async def get_cases():
 async def process_report(payload: ReportPayload):
     logger.info("="*50)
     logger.info(f"NEW INCIDENT RECEIVED: {payload.report_id}")
+    logger.info(f"Payload GPS: Lat={payload.gps.lat}, Lng={payload.gps.lng}")
+    logger.info(f"Payload Image URL: {payload.image_url}")
     logger.info("="*50)
     
     payload_dict = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     
     try:
         # Execute orchestrator
+        logger.info(f"🤖 [Supervisor] Handing over to Supervisor Agent process...")
         swarm_result = supervisor_agent.process(payload_dict)
         
         # Check validation rejection
@@ -454,8 +457,9 @@ async def verify_case(case_id: str):
     """Increment verification_count for a case when a user confirms they also encountered the issue."""
     logger.info(f"Verification request received for case: {case_id}")
     
+    from services.database import supabase
     if supabase is None:
-        logger.error("Supabase not configured")
+        logger.error("Supabase not configured. Check environment variables.")
         raise HTTPException(status_code=500, detail="Database not configured")
     
     try:

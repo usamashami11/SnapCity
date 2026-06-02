@@ -1,5 +1,6 @@
 import os
 import json
+from datetime import datetime
 from math import radians, sin, cos, sqrt, atan2
 from typing import List, Dict, Any, Optional
 from supabase import create_client, Client
@@ -7,25 +8,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
+# Priority: Service Role Key for backend write access, fallback to Anon Key
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
 
 print(f"\n{'='*80}")
 print(f"🔧 SUPABASE DATABASE INITIALIZATION")
 print(f"URL: {SUPABASE_URL}")
-print(f"KEY: {SUPABASE_ANON_KEY[:20] if SUPABASE_ANON_KEY else 'NOT SET'}...")
+print(f"KEY: {SUPABASE_KEY[:20] if SUPABASE_KEY else 'NOT SET'}...")
 print(f"{'='*80}\n")
 
 supabase: Optional[Client] = None
-if SUPABASE_URL and SUPABASE_ANON_KEY:
+if SUPABASE_URL and SUPABASE_KEY:
     try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-        print("✅ Supabase client created successfully using Service Role/Admin key")
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("✅ Supabase client created successfully")
     except Exception as e:
         print(f"❌ CRITICAL: Failed to create Supabase client: {str(e)}")
-        raise e
 else:
-    print(f"❌ CRITICAL: Missing environment variables. URL={bool(SUPABASE_URL)}, KEY={bool(SUPABASE_ANON_KEY)}")
+    print(f"❌ CRITICAL: Missing environment variables. URL={bool(SUPABASE_URL)}, KEY={bool(SUPABASE_KEY)}")
 
 
 def save_case(case_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -47,7 +48,7 @@ def save_case(case_data: Dict[str, Any]) -> Dict[str, Any]:
     print(f"{'='*80}")
     
     if supabase is None:
-        error_msg = "❌ CRITICAL: Supabase not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY in backend/.env"
+        error_msg = "❌ CRITICAL: Supabase not configured. Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set in the environment or .env file."
         print(error_msg)
         raise Exception(error_msg)
     
@@ -71,7 +72,7 @@ def save_case(case_data: Dict[str, Any]) -> Dict[str, Any]:
         row = {
             "report_id": report_id,
             "case_id": case_id,
-            "timestamp": case_data.get("timestamp"),
+            "timestamp": case_data.get("timestamp") or datetime.utcnow().isoformat(),
             "image_url": case_data.get("image_url"),
             "lat": float(lat) if lat is not None else 0.0,
             "lng": float(lng) if lng is not None else 0.0,
