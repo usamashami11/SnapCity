@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:geocoding/geocoding.dart';
+import '../backend_contract.dart';
 import '../snapcity_theme.dart';
 import '../widgets.dart';
 
@@ -19,19 +20,22 @@ Widget _buildTicketImage(String path,
 }
 
 class TicketScreen extends StatefulWidget {
-  const TicketScreen(
-      {super.key,
-      required this.imagePath,
-      required this.onClose,
-      required this.onSubmit,
-      required this.lat,
-      required this.lng});
+  const TicketScreen({
+    super.key,
+    required this.imagePath,
+    required this.onClose,
+    required this.onSubmit,
+    required this.lat,
+    required this.lng,
+    required this.response,
+  });
 
   final String imagePath;
   final VoidCallback onClose;
   final VoidCallback onSubmit;
   final double lat;
   final double lng;
+  final AgentReportResponse response;
 
   @override
   State<TicketScreen> createState() => _TicketScreenStateV2();
@@ -43,7 +47,7 @@ class _TicketScreenStateV2 extends State<TicketScreen> {
   double sheetOffset = 0;
   String? _voicePath;
   final _recorder = AudioRecorder();
-  String _currentArea = 'Detecting location...';
+  String _currentArea = 'Locating...';
 
   @override
   void initState() {
@@ -57,11 +61,13 @@ class _TicketScreenStateV2 extends State<TicketScreen> {
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
         setState(() {
-          _currentArea = place.subLocality ?? place.locality ?? 'Your Area';
+          _currentArea = place.locality ?? 'Your Area';
         });
       }
     } catch (e) {
-      setState(() => _currentArea = 'Your Area');
+      setState(() => _currentArea = widget.response.area.isNotEmpty
+          ? widget.response.area
+          : 'Locating...');
     }
   }
 
@@ -163,6 +169,7 @@ class _TicketScreenStateV2 extends State<TicketScreen> {
                         onVoice: _handleVoice,
                         onImage: () => setState(() => showImagePreview = true),
                         onSubmit: widget.onSubmit,
+                        response: widget.response,
                         areaName: _currentArea,
                       ),
                     ),
@@ -195,6 +202,85 @@ class _TicketScreenStateV2 extends State<TicketScreen> {
   }
 }
 
+class GodmodeTelemetry extends StatelessWidget {
+  const GodmodeTelemetry({super.key, required this.logs});
+  final List<dynamic> logs;
+
+  @override
+  Widget build(BuildContext context) {
+    final agents = [
+      {'name': 'SupervisorAgent', 'emoji': '🧠'},
+      {'name': 'IngestionAgent', 'emoji': '👁️'},
+      {'name': 'ContextAgent', 'emoji': '🌐'},
+      {'name': 'ReasoningAgent', 'emoji': '⚙️'},
+      {'name': 'DispatchAgent', 'emoji': '🚀'},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('GODMODE LIVE TELEMETRY',
+            style: TextStyle(
+                fontSize: 10,
+                color: SnapColors.purple,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.2)),
+        const SizedBox(height: 12),
+        for (final agent in agents)
+          _buildAgentLog(agent['name']!, agent['emoji']!,
+              logs.where((l) => l['agent'] == agent['name']).toList()),
+      ],
+    );
+  }
+
+  Widget _buildAgentLog(String name, String emoji, List<dynamic> agentLogs) {
+    return Theme(
+      data: ThemeData().copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        leading: Text(emoji, style: const TextStyle(fontSize: 20)),
+        title: Text(name,
+            style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: SnapColors.ink)),
+        subtitle: Text('${agentLogs.length} frames captured',
+            style: const TextStyle(fontSize: 11, color: SnapColors.muted)),
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8F9FA),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE9ECEF)),
+            ),
+            child: agentLogs.isEmpty
+                ? const Text('No logs for this agent session.',
+                    style: TextStyle(fontSize: 12, color: SnapColors.muted))
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: agentLogs.map((l) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          '• ${l['message']}',
+                          style: const TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'monospace',
+                              color: Color(0xFF495057)),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class TicketContentV2 extends StatelessWidget {
   const TicketContentV2({
     super.key,
@@ -203,6 +289,7 @@ class TicketContentV2 extends StatelessWidget {
     required this.onVoice,
     required this.onImage,
     required this.onSubmit,
+    required this.response,
     required this.areaName,
   });
 
@@ -211,16 +298,13 @@ class TicketContentV2 extends StatelessWidget {
   final VoidCallback onVoice;
   final VoidCallback onImage;
   final VoidCallback onSubmit;
+  final AgentReportResponse response;
   final String areaName;
 
   @override
   Widget build(BuildContext context) {
-    // Generate some deterministic but realistic-looking values for the preview
-    // These will be replaced by the actual backend response after submission
-    final confidenceValue = "Analyzing...";
-    final strengthValue = "Pending";
-    final riskValue = "Calculating...";
-    final responsibleValue = "Determining...";
+    final severityType = response.severity.toLowerCase();
+    final actionDirective = severityType == 'high' ? 'Escalated' : 'Ready';
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -275,13 +359,13 @@ class TicketContentV2 extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('AI generating case...',
+                  const Text('AI Swarm Orchestrated',
                       style: TextStyle(
                           fontSize: 12,
                           color: SnapColors.muted,
                           fontWeight: FontWeight.w600)),
-                  const Text('Structural Analysis',
-                      style: TextStyle(
+                  Text(response.issueType.replaceAll('_', ' ').toUpperCase(),
+                      style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
                           height: 1.05)),
@@ -292,17 +376,36 @@ class TicketContentV2 extends StatelessWidget {
                 ],
               ),
             ),
-            const StatusPill('Analysing', color: SnapColors.purple),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: SnapColors.success.withOpacity(.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text(
+                "Verified",
+                style: TextStyle(
+                  color: SnapColors.success,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
           ],
         ),
         const Divider(height: 18),
-        const Row(
+        Row(
           children: [
+            const TicketTopCell(
+                label: 'Status', value: 'Verified', color: SnapColors.success),
             TicketTopCell(
-                label: 'Status', value: 'Incoming', color: SnapColors.purple),
-            TicketTopCell(label: 'Cluster', value: 'Checking...'),
+                label: 'Cluster', value: '${response.similarReports} reports'),
             TicketTopCell(
-                label: 'Action', value: 'Draft', color: SnapColors.muted),
+                label: 'Action',
+                value: actionDirective,
+                color: severityType == 'high'
+                    ? SnapColors.danger
+                    : SnapColors.success),
           ],
         ),
         const SizedBox(height: 10),
@@ -317,24 +420,38 @@ class TicketContentV2 extends StatelessWidget {
             TicketField(
                 icon: Icons.auto_awesome_rounded,
                 label: 'Confidence',
-                value: confidenceValue),
-            const TicketField(
+                value: "${response.confidence}% Confidence"),
+            TicketField(
                 icon: Icons.cases_outlined,
                 label: 'Similar reports',
-                value: 'Scanning...'),
+                value: "${response.similarReports} reports nearby"),
             TicketField(
                 icon: Icons.shield_outlined,
                 label: 'Case strength',
-                value: strengthValue),
+                value: "Strength: ${response.confidence}%"),
             TicketField(
                 icon: Icons.warning_amber_rounded,
-                label: 'Risk',
-                value: riskValue,
-                danger: false),
+                label: 'Risk Profile',
+                value: response.escalationReason,
+                danger: true),
             TicketField(
                 icon: Icons.engineering_outlined,
-                label: 'Responsible',
-                value: responsibleValue),
+                label: 'Responsible Group',
+                value: response.assignedResponder),
+          ],
+        ),
+        const Divider(height: 32),
+        GodmodeTelemetry(logs: response.swarmLogs),
+        const Divider(height: 32),
+        Row(
+          children: [
+            const Icon(Icons.stars_rounded, color: SnapColors.yellow, size: 24),
+            const SizedBox(width: 8),
+            Text('Impact: +${response.points} Points',
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: SnapColors.ink)),
           ],
         ),
         const Divider(height: 16),
@@ -510,7 +627,7 @@ class TicketField extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: danger ? FontWeight.bold : FontWeight.w800,
                       color: danger ? SnapColors.danger : SnapColors.ink,
                       height: 1.1)),
             ],

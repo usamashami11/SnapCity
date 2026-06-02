@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'models.dart';
 import 'snapcity_theme.dart';
@@ -680,3 +681,49 @@ class FilterRow extends StatelessWidget {
     );
   }
 }
+
+String getDistanceText(Position? userPosition, double? lat, double? lng) {
+  if (userPosition == null || lat == null || lng == null) {
+    return "Distance unavailable";
+  }
+  final meters = Geolocator.distanceBetween(
+    userPosition.latitude,
+    userPosition.longitude,
+    lat,
+    lng,
+  );
+  if (meters < 1000) {
+    return "${meters.toStringAsFixed(0)}m away from your location";
+  } else {
+    final km = meters / 1000;
+    return "${km.toStringAsFixed(1)}km away from your location";
+  }
+}
+
+String formatRelativeTime(String? timestampStr) {
+  if (timestampStr == null || timestampStr.isEmpty) {
+    return "Reported recently";
+  }
+  try {
+    final parsed = DateTime.parse(timestampStr);
+    final diff = DateTime.now().difference(parsed);
+    if (diff.inDays > 0) {
+      return "Reported ${diff.inDays} ${diff.inDays == 1 ? 'day' : 'days'} ago";
+    } else if (diff.inHours > 0) {
+      return "Reported ${diff.inHours} ${diff.inHours == 1 ? 'hour' : 'hours'} ago";
+    } else if (diff.inMinutes > 0) {
+      return "Reported ${diff.inMinutes} ${diff.inMinutes == 1 ? 'minute' : 'minutes'} ago";
+    } else {
+      return "Reported just now";
+    }
+  } catch (e) {
+    return "Reported recently";
+  }
+}
+
+String getConfirmationsText(int reports) {
+  if (reports <= 0) return "No confirmations yet";
+  if (reports == 1) return "1 confirmation received";
+  return "$reports confirmations received";
+}
+

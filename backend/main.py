@@ -19,11 +19,12 @@ from api.v1 import v1_router
 from utils.logger import get_agent_logger
 
 app = FastAPI(title="SnapCity CIRO API", version="1.0.0", description="Backend orchestration for Google Antigravity Hackathon Challenge 3.")
-logger = get_agent_logger("CIRO_Orchestrator")
+logger = get_agent_logger("SupervisorAgent")
 
 # Include the structured endpoints router
 app.include_router(v1_router, prefix="/api/v1")
 
 if __name__ == "__main__":
     import uvicorn
+    print("🚀 SnapCity Swarm Backend Starting...")
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

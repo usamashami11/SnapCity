@@ -173,13 +173,10 @@ class _CasesScreenState extends State<CasesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cases = _globalCases.where((item) {
-      if (filter == 'Nearby You') {
-        // Simple logic for MVP: everything in current locality
-        return true;
-      }
+    final filteredCases = _globalCases.where((item) {
+      if (filter == 'Nearby You') return true;
       if (filter == 'Fixed') return item.status == 'Fixed';
-      return true; // Recently Reported (All)
+      return true;
     }).toList();
 
     return ScaffoldWithNav(
@@ -193,128 +190,103 @@ class _CasesScreenState extends State<CasesScreen> {
         onRefresh: _loadGlobalCases,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 46, 12, 92),
+          physics: const AlwaysScrollableScrollPhysics(),
           children: [
             const Text('Global community reports',
                 style: TextStyle(fontSize: 12, color: SnapColors.muted)),
             const SizedBox(height: 4),
             const Text('Cases',
-                style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 14),
-            FilterRow(
-                items: const ['Recently Reported', 'Nearby You', 'Fixed'],
-                selected: filter,
-                onSelected: (value) => setState(() => filter = value)),
-            const SizedBox(height: 10),
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  'Recently Reported',
+                  'Nearby You',
+                  'Fixed'
+                ]
+                    .map((f) => Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(f),
+                            selected: filter == f,
+                            onSelected: (val) => setState(() => filter = f),
+                            backgroundColor: Colors.white,
+                            selectedColor: SnapColors.purple.withOpacity(.12),
+                            labelStyle: TextStyle(
+                                color: filter == f
+                                    ? SnapColors.purple
+                                    : SnapColors.muted,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
+                                borderSide: BorderSide(
+                                    color: filter == f
+                                        ? SnapColors.purple
+                                        : SnapColors.line)),
+                          ),
+                        ))
+                    .toList(),
+              ),
+            ),
+            const SizedBox(height: 16),
             if (_isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: Center(
-                  child: CircularProgressIndicator(
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(SnapColors.purple),
-                  ),
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 60),
+                  child: CircularProgressIndicator(color: SnapColors.purple),
                 ),
               )
             else if (_error != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Center(
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 60),
                   child: Column(
                     children: [
-                      Icon(Icons.error_outline_rounded,
-                          size: 48, color: SnapColors.danger),
+                      const Icon(Icons.error_outline_rounded,
+                          color: Colors.redAccent, size: 40),
                       const SizedBox(height: 12),
-                      Text(
-                        'Error loading cases',
-                        style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: SnapColors.ink),
-                      ),
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text(
-                          _error!,
+                      Text(_error!,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              fontSize: 13,
-                              color: SnapColors.muted,
-                              fontFamily: 'monospace'),
-                        ),
-                      ),
+                          style: const TextStyle(color: Colors.redAccent)),
                       const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: _loadGlobalCases,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: SnapColors.purple,
-                        ),
-                        child: const Text('Try Again'),
-                      ),
+                      ElevatedButton(
+                          onPressed: _loadGlobalCases,
+                          child: const Text('Retry'))
                     ],
                   ),
                 ),
               )
-            else if (!_isLoading && _error == null && cases.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 40),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_circle_outline,
-                          size: 60, color: SnapColors.success),
-                      const SizedBox(height: 18),
-                      const Text(
-                        'No civic issues reported yet.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: SnapColors.ink),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Your city is looking great!',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14, color: SnapColors.muted),
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: _loadGlobalCases,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: SnapColors.purple,
-                        ),
-                        child: const Text('Refresh Cases'),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else if (cases.isEmpty && _globalCases.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 40),
-                child: Center(
+            else if (filteredCases.isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 80),
                   child: Column(
                     children: [
-                      Icon(Icons.filter_list_off_rounded,
-                          size: 48, color: SnapColors.muted),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'No cases match the selected filter.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: SnapColors.muted, fontSize: 14),
-                      ),
+                      Icon(Icons.search_off_rounded,
+                          color: SnapColors.muted, size: 48),
+                      SizedBox(height: 12),
+                      Text("No cases found in global database.",
+                          style: TextStyle(
+                              color: SnapColors.muted,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
               )
             else
-              ...cases.map((item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child:
-                        FeedRow(item: item, onTap: () => widget.onCase(item)),
-                  )),
+              ...filteredCases
+                  .map((item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: CaseCard(
+                          item: item,
+                          onTap: () => widget.onCase(item),
+                        ),
+                      ))
+                  .toList(),
           ],
         ),
       ),

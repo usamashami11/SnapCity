@@ -206,4 +206,40 @@ class ApiService {
       rethrow;
     }
   }
+
+  /// Verify a case by incrementing its verification_count.
+  Future<http.Response> verifyCase(String caseId) async {
+    try {
+      final requestUrl = '$activeBaseUrl/api/v1/verify-case/$caseId';
+      print('✅ Verifying case: $caseId');
+
+      final response = await http.put(
+        Uri.parse(requestUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw Exception('Verification request timed out'),
+      );
+
+      if (response.statusCode == 200) {
+        print('✅ Case verified successfully: $caseId');
+      } else {
+        print(
+            '⚠️ Verification response (${response.statusCode}): ${response.body}');
+      }
+
+      return response;
+    } on SocketException catch (e) {
+      throw Exception(
+          'Network Error: ${e.message}. Check internet connection.');
+    } on TimeoutException catch (e) {
+      throw Exception('Request timeout: ${e.message}');
+    } catch (e) {
+      print('❌ Error verifying case: $e');
+      rethrow;
+    }
+  }
 }

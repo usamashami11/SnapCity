@@ -25,6 +25,7 @@ class CivicCase {
     this.tags = const [],
     this.weather,
     this.traffic,
+    this.timestamp,
   });
 
   final String id;
@@ -52,6 +53,7 @@ class CivicCase {
   final List<String> tags;
   final String? weather;
   final String? traffic;
+  final String? timestamp;
 }
 
 class MapIssue {

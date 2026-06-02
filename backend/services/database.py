@@ -8,37 +8,81 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+print(f"\n{'='*80}")
+print(f"🔧 SUPABASE DATABASE INITIALIZATION (GOD MODE)")
+print(f"URL: {SUPABASE_URL}")
+print(f"KEY: {SUPABASE_SERVICE_ROLE_KEY[:20] if SUPABASE_SERVICE_ROLE_KEY else 'NOT SET'}... (SERVICE_ROLE)")
+print(f"{'='*80}\n")
 
 supabase: Optional[Client] = None
-if SUPABASE_URL and SUPABASE_ANON_KEY:
-    supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-
-
-def save_case(case_data: Dict[str, Any]):
-    """Save case to Supabase 'cases' table."""
-    if supabase is None:
-        print("Supabase not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY in backend/.env")
-        return
+if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
     try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        print("✅ Supabase client created successfully with SERVICE_ROLE")
+    except Exception as e:
+        print(f"❌ CRITICAL: Failed to create Supabase client: {str(e)}")
+        raise e
+else:
+    print(f"❌ CRITICAL: Missing environment variables. URL={bool(SUPABASE_URL)}, SERVICE_ROLE_KEY={bool(SUPABASE_SERVICE_ROLE_KEY)}")
+
+
+def save_case(case_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Save case to Supabase 'cases' table with verification_count=1 and strict error handling.
+    
+    Args:
+        case_data: Complete case dictionary from orchestration pipeline
+        
+    Returns:
+        Response data from Supabase if successful
+        
+    Raises:
+        Exception: If Supabase is not configured or write operation fails
+    """
+    print(f"\n{'='*80}")
+    print(f"💾 ATTEMPTING SUPABASE CASE WRITE")
+    print(f"Report ID: {case_data.get('report_id')}")
+    print(f"{'='*80}")
+    
+    if supabase is None:
+        error_msg = "❌ CRITICAL: Supabase not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in backend/.env"
+        print(error_msg)
+        raise Exception(error_msg)
+    
+    try:
+        # Extract and validate case data
+        report_id = case_data.get("report_id")
+        lat = case_data.get("gps", {}).get("lat")
+        lng = case_data.get("gps", {}).get("lng")
+        issue_type = case_data.get("ingestion", {}).get("classification") or case_data.get("detection", {}).get("issue_type")
+        severity_level = case_data.get("reasoning", {}).get("severity_level")
+        
+        # Build row with strict schema matching for Phase 2 Godmode
         row = {
-            "report_id": case_data.get("report_id"),
-            "case_id": case_data.get("simulation_outcome", {}).get("case_id"),
-            "timestamp": case_data.get("timestamp"),
+            "report_id": report_id,
+            "lat": float(lat) if lat is not None else 0.0,
+            "lng": float(lng) if lng is not None else 0.0,
+            "issue_type": issue_type,
+            "severity_level": severity_level,
+            "verification_count": 1,
             "image_url": case_data.get("image_url"),
-            "lat": case_data.get("gps", {}).get("lat"),
-            "lng": case_data.get("gps", {}).get("lng"),
             "location_name": case_data.get("location_name") or case_data.get("context", {}).get("area"),
-            "classification": case_data.get("classification"),
-            "issue_type": case_data.get("detection", {}).get("issue_type"),
-            "confidence_score": case_data.get("detection", {}).get("confidence_score"),
-            "area": case_data.get("context", {}).get("area"),
-            "severity_level": case_data.get("reasoning", {}).get("severity_level"),
             "raw_data": case_data,
         }
-        supabase.table("cases").upsert(row).execute()
+        
+        print(f"\n📤 FORCING SUPABASE WRITE (BYPASSING RLS):")
+        print(f"   - Row: {json.dumps(row, indent=2, default=str)}")
+        
+        # Execute insert with explicit error capture
+        response = supabase.table("cases").insert(row).execute()
+        print(f"✅ SUPABASE WRITE SUCCESS: {response.data}")
+        return response.data
+        
     except Exception as e:
-        print(f"Error saving to Supabase: {e}")
+        print(f"SUPABASE ERROR: {e}")
+        raise HTTPException(status_code=500, detail=f"Database force-write failed: {str(e)}")
 
 
 def get_all_cases() -> List[Dict[str, Any]]:
@@ -46,11 +90,33 @@ def get_all_cases() -> List[Dict[str, Any]]:
     if supabase is None:
         return []
     try:
-        response = supabase.table("cases").select("raw_data").order("created_at", desc=True).execute()
-        return [row["raw_data"] for row in response.data]
+        response = supabase.table("cases").select("*").order("created_at", desc=True).execute()
+        return response.data
     except Exception as e:
-        print(f"Error fetching from Supabase: {e}")
+        print(f"Error fetching cases: {e}")
         return []
+
+
+def increment_verification(report_id: str) -> Dict[str, Any]:
+    """Increments the verification_count for a specific case."""
+    if supabase is None:
+        raise Exception("Supabase not configured")
+    
+    try:
+        # First get current count
+        response = supabase.table("cases").select("verification_count").eq("report_id", report_id).execute()
+        if not response.data:
+            raise Exception(f"Case with report_id {report_id} not found")
+        
+        current_count = response.data[0].get("verification_count", 1)
+        new_count = current_count + 1
+        
+        # Update
+        update_res = supabase.table("cases").update({"verification_count": new_count}).eq("report_id", report_id).execute()
+        return update_res.data[0]
+    except Exception as e:
+        print(f"Error incrementing verification: {e}")
+        raise e
 
 
 def _haversine_distance_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:

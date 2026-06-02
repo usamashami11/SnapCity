@@ -17,9 +17,29 @@ from agents.dispatch import DispatchAgent
 from services.authority_finder import AuthorityFinderService
 from utils.logger import get_agent_logger
 from services.database import save_case, get_all_cases
+from services.database import supabase
 
 router = APIRouter()
-logger = get_agent_logger("CIRO_Report_API")
+logger = get_agent_logger("SupervisorAgent")
+
+
+def get_swarm_logs() -> list:
+    """Reads the last few entries from agent_traces.json to provide live telemetry."""
+    logs = []
+    try:
+        if os.path.exists(JSON_FILE_PATH):
+            with open(JSON_FILE_PATH, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                # Get last 50 lines to ensure we capture the current session's swarm activity
+                for line in lines[-50:]:
+                    try:
+                        logs.append(json.loads(line))
+                    except:
+                        continue
+    except Exception as e:
+        print(f"Error reading swarm logs: {e}")
+    return logs
+
 
 # Define Data Models
 class GPSCoords(BaseModel):
@@ -320,7 +340,7 @@ async def process_report(payload: ReportPayload):
                     f.write(json.dumps({
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "emoji": "❌",
-                        "agent": "CIRO_Orchestrator",
+                        "agent": "SupervisorAgent",
                         "level": "WARNING",
                         "status": "REJECTED_NON_CIVIC",
                         "message": "The uploaded content does not contain an active civic infrastructure hazard."
@@ -376,16 +396,55 @@ async def process_report(payload: ReportPayload):
                 "authority": dispatch_result.get("authority", authority_result),
                 "user_reward": dispatch_result.get("user_reward", {})
             },
-            "authority": dispatch_result.get("authority", authority_result)
+            "authority": dispatch_result.get("authority", authority_result),
+            "swarm_logs": get_swarm_logs()
         }
         
         # Persist to database
-        save_case(response_data)
+        try:
+            save_case(response_data)
+        except Exception as db_err:
+            logger.error(f"❌ Database sync failed: {str(db_err)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database synchronization failed: {str(db_err)}"
+            )
         
+        logger.info(f"✅ Report {payload.report_id} completed successfully.")
         return response_data
 
     except HTTPException as http_err:
         raise http_err
     except Exception as e:
-        logger.error(f"Error during orchestration: {str(e)}")
+        logger.error(f"❌ Error during orchestration: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Orchestration Failed: {str(e)}")
+
+
+@router.put("/verify-case/{case_id}")
+async def verify_case(case_id: str):
+    """
+    Increment verification_count for a case when a user confirms they also encountered the issue.
+    
+    Args:
+        case_id: The case ID (maps to report_id) to increment
+    """
+    logger.info(f"🔄 VERIFICATION REQUEST: {case_id}")
+    
+    if supabase is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    
+    try:
+        # Import here to avoid circular dependency
+        from services.database import increment_verification
+        
+        # Call the database increment function
+        result = increment_verification(case_id)
+        
+        return {
+            "status": "success",
+            "report_id": case_id,
+            "verification_count": result.get("verification_count")
+        }
+    except Exception as e:
+        logger.error(f"❌ Verification failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")

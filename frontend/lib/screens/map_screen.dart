@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -38,6 +39,10 @@ class CivicMapScreen extends StatefulWidget {
     required this.onFeed,
     required this.onSnap,
     required this.onCase,
+    this.targetFocusCase,
+    required this.selectActiveCase,
+    this.initialRouted = false,
+    required this.allGlobalCases,
   });
 
   final Position? currentPosition;
@@ -46,6 +51,10 @@ class CivicMapScreen extends StatefulWidget {
   final VoidCallback onFeed;
   final VoidCallback onSnap;
   final ValueChanged<CivicCase> onCase;
+  final CivicCase? targetFocusCase;
+  final void Function(CivicCase, {bool changeTab}) selectActiveCase;
+  final bool initialRouted;
+  final List<CivicCase> allGlobalCases;
 
   @override
   State<CivicMapScreen> createState() => _CivicMapScreenState();
@@ -55,24 +64,224 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
   String filter = 'Needs proof';
   List<CivicCase> _cases = [];
   CivicCase? selectedCase;
-  bool routed = false;
+  bool isRoutingActive = false;
+  Set<Polyline> mapPolylines = {};
   bool _isLoading = true;
   String? _error;
   final MapController _mapController = MapController();
 
+  // Location tracking state
+  StreamSubscription<Position>? _positionStreamSubscription;
+  Position? _livePosition;
+  double? _remainingDistance;
+
+  // Geofence and verification state
+  bool _geofenceDialogShown = false;
+  bool _geofenceReached = false;
+
+  bool get isWithin15Meters {
+    if (_remainingDistance == null) return false;
+    return _remainingDistance! <= 15.0;
+  }
+
   @override
   void initState() {
     super.initState();
+    _cases = widget.allGlobalCases;
+    selectedCase = widget.targetFocusCase;
+    isRoutingActive = widget.initialRouted;
+
+    if (isRoutingActive && selectedCase != null) {
+      filter = selectedCase!.severity.toLowerCase() == 'high'
+          ? 'Critical'
+          : 'Needs proof';
+      _startLiveTracking(selectedCase!);
+    }
+
     _loadGlobalCases();
   }
 
+  @override
+  void dispose() {
+    _positionStreamSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _verifyCase(CivicCase caseToVerify) async {
+    try {
+      print('📤 Calling verify endpoint for case: ${caseToVerify.id}');
+      final response = await ApiService().verifyCase(caseToVerify.id);
+
+      if (response.statusCode == 200) {
+        print('✅ Verification successful');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Record updated!'),
+              duration: Duration(seconds: 2),
+              backgroundColor: Color(0xFF6C5CE7),
+            ),
+          );
+          _loadGlobalCases(); // Refresh to show incremented count
+        }
+      } else {
+        print('⚠️ Verification returned status: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Verification error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Verification failed. Please try again.'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showGeofenceDialog(CivicCase targetCase) {
+    if (_geofenceDialogShown) return;
+    _geofenceDialogShown = true;
+
+    print('🎯 Showing geofence arrival dialog for case: ${targetCase.id}');
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Destination Reached'),
+        content: const Text('Have you encountered that issue too?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              print('❌ User clicked No on geofence dialog');
+              Navigator.of(context).pop();
+              _geofenceDialogShown = false;
+            },
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () {
+              print('✅ User clicked Yes on geofence dialog - verifying case');
+              Navigator.of(context).pop();
+              _geofenceDialogShown = false;
+              _verifyCase(targetCase);
+              setState(() {
+                _geofenceReached = true;
+              });
+            },
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startLiveTracking(CivicCase target) {
+    if (target.lat == null || target.lng == null) {
+      print('⚠️ Cannot start tracking: target has no coordinates');
+      return;
+    }
+
+    print('🚀 Starting live tracking for case: ${target.id}');
+    print('   Target: ${target.lat}, ${target.lng}');
+
+    setState(() {
+      isRoutingActive = true;
+      mapPolylines.clear();
+      _remainingDistance = null;
+      _geofenceDialogShown = false;
+      _geofenceReached = false;
+    });
+
+    _positionStreamSubscription?.cancel();
+
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 2,
+    );
+
+    _positionStreamSubscription = Geolocator.getPositionStream(
+      locationSettings: locationSettings,
+    ).listen(
+      (Position position) {
+        if (!mounted) return;
+
+        final dist = Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          target.lat!,
+          target.lng!,
+        );
+
+        print(
+            '📍 Location update: ${position.latitude}, ${position.longitude} | Distance: ${dist.toStringAsFixed(1)}m');
+
+        setState(() {
+          _livePosition = position;
+          _remainingDistance = dist;
+        });
+
+        // Update polyline while user is navigating
+        if (dist > 15.0) {
+          setState(() {
+            mapPolylines = {
+              Polyline(
+                points: [
+                  LatLng(position.latitude, position.longitude),
+                  LatLng(target.lat!, target.lng!),
+                ],
+                color: Colors.indigo,
+                strokeWidth: 4.5,
+              )
+            };
+          });
+          print(
+              '   📍 Drawing polyline, distance: ${(dist / 1000).toStringAsFixed(2)} km');
+        } else {
+          // User has reached the geofence (15 meters or less)
+          print('🎯 GEOFENCE REACHED! Distance: ${dist.toStringAsFixed(1)}m');
+
+          _positionStreamSubscription?.cancel();
+          _positionStreamSubscription = null;
+
+          setState(() {
+            mapPolylines.clear();
+            isRoutingActive = false;
+          });
+
+          // Show geofence arrival dialog
+          _showGeofenceDialog(target);
+        }
+
+        _mapController.move(
+            LatLng(position.latitude, position.longitude), 16.0);
+      },
+      onError: (err) {
+        print('❌ Location stream error: $err');
+        if (mounted) {
+          setState(() {
+            isRoutingActive = false;
+          });
+        }
+      },
+    );
+  }
+
   Future<void> _loadGlobalCases() async {
+    print('📡 Loading global cases...');
+
     setState(() {
       _isLoading = true;
       _error = null;
     });
+
     try {
       final responses = await ApiService().fetchGlobalCases();
+      print('✅ Fetched ${responses.length} cases');
+
       if (!mounted) return;
 
       final parsedCases = responses
@@ -83,7 +292,9 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                 location: resp.locationName?.isNotEmpty == true
                     ? resp.locationName!
                     : resp.area,
-                status: resp.severity.toLowerCase() == 'high' ? 'Critical' : 'Needs proof',
+                status: resp.severity.toLowerCase() == 'high'
+                    ? 'Critical'
+                    : 'Needs proof',
                 severity: resp.severity,
                 reports: resp.similarReports + 1,
                 strength: resp.confidence,
@@ -108,12 +319,83 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
 
       setState(() {
         _cases = parsedCases;
-        if (_cases.isNotEmpty) {
-          selectedCase = _cases.first;
+      });
+
+      // DIRECT TAB FALLBACK: If targetFocusCase is null, find nearest case
+      CivicCase? activeCase = widget.targetFocusCase;
+      if (activeCase == null && _cases.isNotEmpty) {
+        print(
+            '🔄 Direct Tab Fallback: targetFocusCase is null, finding nearest case...');
+
+        Position? userPos = widget.currentPosition ?? _livePosition;
+        if (userPos == null) {
+          try {
+            print('   📍 Getting current position...');
+            userPos = await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(
+                accuracy: LocationAccuracy.high,
+                timeLimit: Duration(seconds: 4),
+              ),
+            );
+          } catch (e) {
+            print('   ⚠️ Could not get current position: $e');
+          }
+        }
+
+        if (userPos != null) {
+          CivicCase? closest;
+          double minDistance = double.infinity;
+
+          for (final c in _cases) {
+            if (c.lat == null || c.lng == null) continue;
+
+            final dist = Geolocator.distanceBetween(
+              userPos.latitude,
+              userPos.longitude,
+              c.lat!,
+              c.lng!,
+            );
+
+            if (dist < minDistance) {
+              minDistance = dist;
+              closest = c;
+            }
+          }
+
+          if (closest != null) {
+            print(
+                '   ✅ Found nearest case: ${closest.title} (${(minDistance / 1000).toStringAsFixed(2)} km away)');
+            activeCase = closest;
+          }
+        } else {
+          print('   📋 No user position, using first case');
+          activeCase = _cases.first;
+        }
+
+        if (activeCase != null) {
+          print('   🎯 Setting active case via selectActiveCase');
+          widget.selectActiveCase(activeCase, changeTab: false);
+        }
+      }
+
+      setState(() {
+        selectedCase = activeCase;
+        if (selectedCase != null &&
+            selectedCase!.lat != null &&
+            selectedCase!.lng != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              print(
+                  '🗺️  Moving map to selected case: ${selectedCase!.lat}, ${selectedCase!.lng}');
+              _mapController.move(
+                  LatLng(selectedCase!.lat!, selectedCase!.lng!), 15.0);
+            }
+          });
         }
         _isLoading = false;
       });
     } catch (e) {
+      print('❌ Error loading global cases: $e');
       if (mounted) {
         setState(() {
           _error = e.toString();
@@ -124,34 +406,14 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
   }
 
   LatLng get _center {
+    if (_livePosition != null) {
+      return LatLng(_livePosition!.latitude, _livePosition!.longitude);
+    }
     if (widget.currentPosition != null) {
       return LatLng(
           widget.currentPosition!.latitude, widget.currentPosition!.longitude);
     }
     return const LatLng(24.9180, 67.0971); // Default to Karachi centroid
-  }
-
-  String _getDistanceText(CivicCase item) {
-    if (widget.currentPosition == null || item.lat == null || item.lng == null) {
-      return 'Calculating distance...';
-    }
-    final meters = Geolocator.distanceBetween(
-      widget.currentPosition!.latitude,
-      widget.currentPosition!.longitude,
-      item.lat!,
-      item.lng!,
-    );
-    if (meters < 1000) {
-      return '${meters.toStringAsFixed(0)} m away';
-    }
-    return '${(meters / 1000).toStringAsFixed(1)} km away';
-  }
-
-  String _getConfirmationsText(CivicCase item) {
-    if (item.reports <= 1) {
-      return 'Reported by 1 citizen';
-    }
-    return 'Reported by ${item.reports} citizens';
   }
 
   @override
@@ -160,7 +422,9 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
       if (filter == 'Critical') return item.severity.toLowerCase() == 'high';
       if (filter == 'Fixed') return item.status == 'Fixed';
       if (filter == 'My area') {
-        if (widget.currentPosition == null || item.lat == null || item.lng == null) return true;
+        if (widget.currentPosition == null ||
+            item.lat == null ||
+            item.lng == null) return true;
         final dist = Geolocator.distanceBetween(
           widget.currentPosition!.latitude,
           widget.currentPosition!.longitude,
@@ -169,7 +433,8 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
         );
         return dist <= 1000; // Within 1 km radius
       }
-      return item.severity.toLowerCase() != 'high' && item.status != 'Fixed'; // Needs proof
+      return item.severity.toLowerCase() != 'high' &&
+          item.status != 'Fixed'; // Needs proof
     }).toList();
 
     return ScaffoldWithNav(
@@ -202,7 +467,7 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                         height: 40,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: SnapColors.purple.withOpacity(0.2),
+                            color: SnapColors.purple.withValues(alpha: 0.2),
                             shape: BoxShape.circle,
                             border:
                                 Border.all(color: SnapColors.purple, width: 2),
@@ -223,7 +488,9 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                         child: GestureDetector(
                           onTap: () => setState(() {
                             selectedCase = item;
-                            routed = false;
+                            isRoutingActive = false;
+                            _geofenceReached = false;
+                            _mapController.move(point, 15.0);
                           }),
                           child: MapPin(
                             item: item,
@@ -234,18 +501,9 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                     }),
                   ],
                 ),
-                if (routed && selectedCase != null && selectedCase!.lat != null && selectedCase!.lng != null)
+                if (isRoutingActive && mapPolylines.isNotEmpty)
                   PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: [
-                          _center,
-                          LatLng(selectedCase!.lat!, selectedCase!.lng!),
-                        ],
-                        color: SnapColors.purple,
-                        strokeWidth: 4.0,
-                      ),
-                    ],
+                    polylines: mapPolylines.toList(),
                   ),
               ],
             ),
@@ -269,7 +527,8 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                       ],
                     ),
                   ),
-                  RoundIconButton(icon: Icons.refresh_rounded, onTap: _loadGlobalCases),
+                  RoundIconButton(
+                      icon: Icons.refresh_rounded, onTap: _loadGlobalCases),
                 ],
               ),
             ),
@@ -283,10 +542,13 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
               selected: filter,
               onSelected: (value) {
                 final filtered = _cases.where((item) {
-                  if (value == 'Critical') return item.severity.toLowerCase() == 'high';
+                  if (value == 'Critical')
+                    return item.severity.toLowerCase() == 'high';
                   if (value == 'Fixed') return item.status == 'Fixed';
                   if (value == 'My area') {
-                    if (widget.currentPosition == null || item.lat == null || item.lng == null) return true;
+                    if (widget.currentPosition == null ||
+                        item.lat == null ||
+                        item.lng == null) return true;
                     final dist = Geolocator.distanceBetween(
                       widget.currentPosition!.latitude,
                       widget.currentPosition!.longitude,
@@ -295,15 +557,19 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                     );
                     return dist <= 1000;
                   }
-                  return item.severity.toLowerCase() != 'high' && item.status != 'Fixed';
+                  return item.severity.toLowerCase() != 'high' &&
+                      item.status != 'Fixed';
                 }).toList();
-                
-                final next = filtered.isNotEmpty ? filtered.first : (_cases.isNotEmpty ? _cases.first : null);
+
+                final next = filtered.isNotEmpty
+                    ? filtered.first
+                    : (_cases.isNotEmpty ? _cases.first : null);
                 setState(() {
                   filter = value;
                   if (next != null) {
                     selectedCase = next;
-                    routed = false;
+                    isRoutingActive = false;
+                    _geofenceReached = false;
                     _mapController.move(LatLng(next.lat!, next.lng!), 15.0);
                   }
                 });
@@ -319,7 +585,8 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                     radius: 20,
                     padding: EdgeInsets.all(24),
                     child: Center(
-                      child: CircularProgressIndicator(color: SnapColors.purple),
+                      child:
+                          CircularProgressIndicator(color: SnapColors.purple),
                     ),
                   )
                 : _error != null
@@ -337,123 +604,161 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                           ),
                         ),
                       )
-                    : selectedCase == null
-                        ? const AppCard(
-                            radius: 20,
-                            padding: EdgeInsets.all(24),
-                            child: Center(
-                              child: Text(
-                                'No active infrastructure issues reported\nin your immediate area.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                    color: SnapColors.muted,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          )
-                        : AppCard(
-                            radius: 20,
-                            padding: const EdgeInsets.all(9),
-                            child: Column(
-                              children: [
-                                Container(
-                                    width: 42,
-                                    height: 4,
-                                    decoration: BoxDecoration(
-                                        color: Colors.black12,
-                                        borderRadius: BorderRadius.circular(999))),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(14),
-                                      child: SizedBox(
-                                        width: 76,
-                                        height: 76,
-                                        child: _buildMapImage(selectedCase!.image),
-                                      ),
+                    : Builder(builder: (context) {
+                        final displayCase = selectedCase ??
+                            widget.targetFocusCase ??
+                            (_cases.isNotEmpty ? _cases.first : null);
+                        if (displayCase == null) {
+                          return const SizedBox.shrink();
+                        }
+                        return AppCard(
+                          radius: 20,
+                          padding: const EdgeInsets.all(9),
+                          child: Column(
+                            children: [
+                              Container(
+                                  width: 42,
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                      color: Colors.black12,
+                                      borderRadius:
+                                          BorderRadius.circular(999))),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: SizedBox(
+                                      width: 76,
+                                      height: 76,
+                                      child: _buildMapImage(displayCase.image),
                                     ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                  child: Text(selectedCase!.title,
-                                                      maxLines: 2,
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: const TextStyle(
-                                                          fontSize: 15,
-                                                          fontWeight: FontWeight.w800,
-                                                          height: 1.08))),
-                                              StatusPill(selectedCase!.status),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                              routed
-                                                  ? 'Route ready - walk path set'
-                                                  : _getDistanceText(selectedCase!),
-                                              style: const TextStyle(
-                                                  fontSize: 11,
-                                                  color: SnapColors.muted,
-                                                  fontWeight: FontWeight.w600)),
-                                          const SizedBox(height: 5),
-                                          Text(_getConfirmationsText(selectedCase!),
-                                              style: const TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w800)),
-                                          Text(
-                                              'Authority: ${selectedCase!.authorityName ?? "SSWMB"}',
-                                              style: const TextStyle(
-                                                  fontSize: 9.5,
-                                                  color: SnapColors.purple,
-                                                  fontWeight: FontWeight.bold)),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      flex: 13,
-                                      child: FilledButton(
-                                        onPressed: routed
-                                            ? widget.onSnap
-                                            : () => setState(() => routed = true),
-                                        style: FilledButton.styleFrom(
-                                            backgroundColor: SnapColors.purple,
-                                            minimumSize: const Size.fromHeight(40)),
-                                        child: Text(
-                                            routed ? 'Open camera' : 'Go confirm',
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                                child: Text(displayCase.title,
+                                                    maxLines: 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                        fontSize: 15,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        height: 1.08))),
+                                            StatusPill(
+                                              displayCase.severity
+                                                          .toLowerCase() ==
+                                                      'high'
+                                                  ? 'Critical'
+                                                  : displayCase.status,
+                                              color: displayCase.severity
+                                                          .toLowerCase() ==
+                                                      'high'
+                                                  ? SnapColors.danger
+                                                  : null,
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                            isRoutingActive
+                                                ? (_remainingDistance != null
+                                                    ? (_remainingDistance! >=
+                                                            1000
+                                                        ? 'Distance: ${(_remainingDistance! / 1000).toStringAsFixed(2)} km'
+                                                        : 'Distance: ${_remainingDistance!.toStringAsFixed(0)} meters')
+                                                    : 'Locating...')
+                                                : getDistanceText(
+                                                    widget.currentPosition,
+                                                    displayCase.lat,
+                                                    displayCase.lng),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
-                                                fontSize: 12,
+                                                fontSize: 11,
+                                                color: SnapColors.muted,
+                                                fontWeight: FontWeight.w600)),
+                                        const SizedBox(height: 5),
+                                        Text(
+                                            getConfirmationsText(
+                                                displayCase.reports),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                                fontSize: 11,
                                                 fontWeight: FontWeight.w800)),
-                                      ),
+                                        Text(
+                                            'Authority: ${displayCase.authorityName ?? "SSWMB"}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                                fontSize: 9.5,
+                                                color: SnapColors.purple,
+                                                fontWeight: FontWeight.bold)),
+                                      ],
                                     ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      flex: 10,
-                                      child: OutlinedButton(
-                                        onPressed: () => widget.onCase(selectedCase!),
-                                        style: OutlinedButton.styleFrom(
-                                            minimumSize: const Size.fromHeight(40)),
-                                        child: const Text('View case',
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w800)),
-                                      ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 13,
+                                    child: FilledButton(
+                                      onPressed: _geofenceReached
+                                          ? widget.onSnap
+                                          : (!isRoutingActive
+                                              ? () => _startLiveTracking(
+                                                  displayCase)
+                                              : null),
+                                      style: FilledButton.styleFrom(
+                                          backgroundColor: _geofenceReached
+                                              ? SnapColors.purple
+                                              : (!isRoutingActive
+                                                  ? SnapColors.purple
+                                                  : Colors.grey),
+                                          minimumSize:
+                                              const Size.fromHeight(40)),
+                                      child: Text(
+                                          _geofenceReached
+                                              ? 'Open camera'
+                                              : (!isRoutingActive
+                                                  ? 'Confirm Case'
+                                                  : 'Routing...'),
+                                          style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w800)),
                                     ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    flex: 10,
+                                    child: OutlinedButton(
+                                      onPressed: () =>
+                                          widget.onCase(displayCase),
+                                      style: OutlinedButton.styleFrom(
+                                          minimumSize:
+                                              const Size.fromHeight(40)),
+                                      child: const Text('View case',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w800)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
+                        );
+                      }),
           ),
         ],
       ),
@@ -469,41 +774,61 @@ class MapPin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = item.status == 'Fixed'
-        ? SnapColors.success
-        : item.severity.toLowerCase() == 'high'
-            ? SnapColors.danger
-            : item.severity.toLowerCase() == 'medium'
-                ? SnapColors.yellow
-                : SnapColors.purple;
+    final isFixed = item.status.toLowerCase() == 'fixed' ||
+        item.status.toLowerCase() == 'resolved';
+    final isCritical = item.severity.toLowerCase() == 'high';
+
+    final Color pinColor;
+    final IconData pinIcon;
+    final bool isCircle;
+
+    if (isFixed) {
+      pinColor = Colors.green;
+      pinIcon = Icons.check;
+      isCircle = true;
+    } else if (isCritical) {
+      pinColor = Colors.red;
+      pinIcon = Icons.warning_rounded;
+      isCircle = false;
+    } else {
+      // Active verification / Needs proof
+      pinColor = Colors.amber;
+      pinIcon = Icons.shield;
+      isCircle = false;
+    }
+
+    final childWidget = Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: pinColor,
+        shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: isCircle
+            ? null
+            : const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+                bottomLeft: Radius.circular(16),
+                bottomRight: Radius.circular(4),
+              ),
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          )
+        ],
+      ),
+      child: Center(
+        child: Icon(pinIcon, color: Colors.white, size: 18),
+      ),
+    );
+
     return AnimatedScale(
       duration: const Duration(milliseconds: 160),
-      scale: selected ? 1.15 : 1,
-      child: Transform.rotate(
-        angle: -.78,
-        child: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: color,
-            border: Border.all(color: Colors.white, width: 4),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(22),
-              topRight: Radius.circular(22),
-              bottomLeft: Radius.circular(22),
-            ),
-          ),
-          child: Transform.rotate(
-            angle: .78,
-            child: Icon(
-                item.status == 'Fixed'
-                    ? Icons.check_rounded
-                    : Icons.shield_rounded,
-                color: Colors.white,
-                size: 16),
-          ),
-        ),
-      ),
+      scale: selected ? 1.25 : 1.0,
+      child: childWidget,
     );
   }
 }

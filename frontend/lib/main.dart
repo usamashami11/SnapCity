@@ -13,11 +13,12 @@ import 'mock_data.dart';
 import 'models.dart';
 import 'backend_contract.dart';
 import 'snapcity_theme.dart';
+import 'widgets.dart';
 import 'screens/home_screen.dart';
 import 'screens/cases_screen.dart';
 import 'screens/feed_screen.dart';
 import 'screens/map_screen.dart';
-import 'screens/camera_screen.dart';
+import 'package:image_picker/image_picker.dart';
 import 'screens/scanning_screen.dart';
 import 'screens/ticket_screen.dart';
 import 'screens/reward_screen.dart';
@@ -136,7 +137,23 @@ class _SnapCityShellState extends State<SnapCityShell> {
   List<CivicCase> _myCases = [];
 
   Position? _currentPosition;
-  String _currentArea = 'Your Area';
+  String _currentArea = 'Locating...';
+
+  List<CivicCase> _allGlobalCases = [];
+  CivicCase? _nearestCase;
+  CivicCase? targetFocusCase;
+  bool _isCurrentlyRouted = false;
+  Future<AgentReportResponse>? _orchestrationFuture;
+
+  void selectActiveCase(CivicCase selectedCase, {bool changeTab = true}) {
+    setState(() {
+      targetFocusCase = selectedCase;
+      _isCurrentlyRouted = false;
+      if (changeTab) {
+        _screen = AppScreen.map;
+      }
+    });
+  }
 
   // Mock stats for UI
   int _fixedIssuesCount = 5;
@@ -268,6 +285,151 @@ class _SnapCityShellState extends State<SnapCityShell> {
     } catch (geoErr) {
       debugPrint('Geocoding error: $geoErr');
     }
+    _loadGlobalCases();
+  }
+
+  Future<void> _loadGlobalCases() async {
+    try {
+      final responses = await ApiService().fetchGlobalCases();
+      final parsedCases = responses
+          .where((resp) => resp.lat != null && resp.lng != null)
+          .map((resp) => CivicCase(
+                id: resp.caseId,
+                title: resp.issueType.replaceAll('_', ' ').toUpperCase(),
+                location: resp.locationName?.isNotEmpty == true
+                    ? resp.locationName!
+                    : resp.area,
+                status: resp.severity.toLowerCase() == 'high'
+                    ? 'Critical'
+                    : 'Needs proof',
+                severity: resp.severity,
+                reports: resp.similarReports + 1,
+                strength: resp.confidence,
+                updated: formatRelativeTime(resp.timestamp),
+                action: 'Ready',
+                image: resp.imageUrl,
+                detail: resp.escalationReason,
+                helper: resp.assignedResponder,
+                lat: resp.lat,
+                lng: resp.lng,
+                duplicateClusterId: resp.duplicateClusterId,
+                similarReportsNearby: resp.similarReports,
+                rewardMessage: resp.rewardMessage,
+                noticeDraft: resp.noticeDraft,
+                authorityName: resp.authority['name'] as String? ?? 'SSWMB',
+                authorityEmail: resp.authority['email'] as String? ?? '',
+                authorityWhatsapp: resp.authority['whatsapp'] as String? ?? '',
+                weather: resp.weather,
+                traffic: resp.traffic,
+                timestamp: resp.timestamp,
+              ))
+          .toList();
+
+      setState(() {
+        _allGlobalCases = parsedCases;
+        _updateNearestCase();
+      });
+    } catch (e) {
+      debugPrint('Error loading global cases: $e');
+    }
+  }
+
+  void _updateNearestCase() {
+    if (_currentPosition == null || _allGlobalCases.isEmpty) {
+      setState(() {
+        _nearestCase = null;
+      });
+      return;
+    }
+    CivicCase? nearest;
+    double minDistance = double.infinity;
+    for (final c in _allGlobalCases) {
+      if (c.lat == null || c.lng == null) continue;
+      if (c.status.toLowerCase() == 'fixed') continue;
+      final dist = Geolocator.distanceBetween(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+        c.lat!,
+        c.lng!,
+      );
+      if (dist < minDistance) {
+        minDistance = dist;
+        nearest = c;
+      }
+    }
+    setState(() {
+      _nearestCase = nearest;
+    });
+  }
+
+  void _setMapActiveCase({CivicCase? targetCase, bool routing = false}) {
+    CivicCase? finalCase = targetCase;
+    if (finalCase == null) {
+      if (_currentPosition != null && _allGlobalCases.isNotEmpty) {
+        CivicCase? nearest;
+        double minDistance = double.infinity;
+        for (final c in _allGlobalCases) {
+          if (c.lat == null || c.lng == null) continue;
+          final dist = Geolocator.distanceBetween(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+            c.lat!,
+            c.lng!,
+          );
+          if (dist < minDistance) {
+            minDistance = dist;
+            nearest = c;
+          }
+        }
+        finalCase = nearest;
+      } else if (_allGlobalCases.isNotEmpty) {
+        finalCase = _allGlobalCases.first;
+      }
+    }
+    setState(() {
+      targetFocusCase = finalCase;
+      _isCurrentlyRouted = routing;
+      _screen = AppScreen.map;
+    });
+  }
+
+  Future<void> _openDirectCamera() async {
+    final previousScreen = _screen;
+    final picker = ImagePicker();
+    try {
+      final XFile? photo = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+      if (photo != null) {
+        setState(() {
+          _capturedImagePath = photo.path;
+          _screen = AppScreen.scanning;
+        });
+        _startAiOrchestration();
+      } else {
+        setState(() {
+          _screen = previousScreen;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error taking photo: $e');
+      setState(() {
+        _screen = previousScreen;
+      });
+    }
+  }
+
+  void _startAiOrchestration() {
+    _lastReportResponse = null;
+    _orchestrationFuture = ApiService().submitCivicReport(
+      reportId: 'rep_${DateTime.now().millisecondsSinceEpoch}',
+      localImagePath: _capturedImagePath!,
+      lat: _currentPosition?.latitude ?? 0.0,
+      lng: _currentPosition?.longitude ?? 0.0,
+      voiceNoteTranscript: '',
+      locationName: _currentArea,
+    );
   }
 
   Future<void> _initNotifications() async {
@@ -440,38 +602,16 @@ class _SnapCityShellState extends State<SnapCityShell> {
   }
 
   Future<void> _submitReport() async {
+    if (_lastReportResponse == null) return;
+
     setState(() {
       _submittingReport = true;
     });
 
     try {
-      // Check for internet connection first (MVP simplified check)
-      // If offline, save locally and notify user.
-      // bool isOffline = false; // In a real app, use connectivity_plus
-
-      if (_currentPosition == null) {
-        await _determinePosition();
-      }
-
-      if (_currentPosition == null) {
-        _showLocationRequiredMessage();
-        setState(() {
-          _submittingReport = false;
-        });
-        return;
-      }
-
-      final response = await ApiService().submitCivicReport(
-        reportId: 'rep_${DateTime.now().millisecondsSinceEpoch}',
-        localImagePath: _capturedImagePath ?? 'assets/pothole-camera.png',
-        lat: _currentPosition!.latitude,
-        lng: _currentPosition!.longitude,
-        voiceNoteTranscript: '',
-        locationName: _currentArea,
-      );
+      final response = _lastReportResponse!;
 
       setState(() {
-        _lastReportResponse = response;
         _submittingReport = false;
         _screen = AppScreen.reward;
 
@@ -487,8 +627,10 @@ class _SnapCityShellState extends State<SnapCityShell> {
 
         final newCase = CivicCase(
           id: response.caseId,
-          title: response.issueType,
-          location: response.area,
+          title: response.issueType.replaceAll('_', ' ').toUpperCase(),
+          location: response.locationName?.isNotEmpty == true
+              ? response.locationName!
+              : response.area,
           status: 'Reported',
           severity: response.severity,
           reports: 1,
@@ -499,9 +641,9 @@ class _SnapCityShellState extends State<SnapCityShell> {
           detail: response.escalationReason,
           helper: response.assignedResponder,
           noticeDraft: response.noticeDraft,
-          authorityName: response.authority['name'],
-          authorityEmail: response.authority['email'],
-          authorityWhatsapp: response.authority['whatsapp'],
+          authorityName: response.authority['name'] as String? ?? 'SSWMB',
+          authorityEmail: response.authority['email'] as String? ?? '',
+          authorityWhatsapp: response.authority['whatsapp'] as String? ?? '',
           weather: response.weather,
           traffic: response.traffic,
         );
@@ -518,26 +660,7 @@ class _SnapCityShellState extends State<SnapCityShell> {
       setState(() {
         _submittingReport = false;
       });
-      if (mounted) {
-        final errorMsg = e.toString().replaceFirst('Exception: ', '');
-        final displayMsg = errorMsg == 'invalid_civic_image'
-            ? 'Please upload a valid civic image.'
-            : errorMsg;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              displayMsg,
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold, color: Colors.white),
-            ),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 92),
-          ),
-        );
-      }
+      debugPrint("Error finalizing case: $e");
     }
   }
 
@@ -567,16 +690,25 @@ class _SnapCityShellState extends State<SnapCityShell> {
           verifiedCount: _verifiedCount,
           fixedNearbyCount: _fixedNearbyCount,
           onFeed: () => _open(AppScreen.feed),
-          onMap: () => _open(AppScreen.map),
+          onMap: () => _setMapActiveCase(targetCase: null, routing: false),
           onCases: () => _open(AppScreen.cases),
-          onSnap: () => _open(AppScreen.camera),
+          onSnap: _openDirectCamera,
           onCase: _openCase,
+          nearestCase: _nearestCase,
+          currentPosition: _currentPosition,
+          onGoConfirm: (CivicCase targetCase) =>
+              _setMapActiveCase(targetCase: targetCase, routing: true),
+          activeCases: _myCases.isEmpty
+              ? _allGlobalCases.where((c) => c.status != 'Fixed').toList()
+              : _myCases,
+          recentFixes:
+              _allGlobalCases.where((c) => c.status == 'Fixed').toList(),
         ),
       AppScreen.cases => CasesScreen(
           onHome: () => _open(AppScreen.home),
           onFeed: () => _open(AppScreen.feed),
-          onMap: () => _open(AppScreen.map),
-          onSnap: () => _open(AppScreen.camera),
+          onMap: () => _setMapActiveCase(targetCase: null, routing: false),
+          onSnap: _openDirectCamera,
           onCase: _openCase,
         ),
       AppScreen.map => CivicMapScreen(
@@ -584,36 +716,39 @@ class _SnapCityShellState extends State<SnapCityShell> {
           onHome: () => _open(AppScreen.home),
           onCases: () => _open(AppScreen.cases),
           onFeed: () => _open(AppScreen.feed),
-          onSnap: () => _open(AppScreen.camera),
+          onSnap: _openDirectCamera,
           onCase: _openCase,
+          targetFocusCase: targetFocusCase,
+          selectActiveCase: selectActiveCase,
+          initialRouted: _isCurrentlyRouted,
+          allGlobalCases: _allGlobalCases,
         ),
       AppScreen.feed => FeedScreen(
           notifications: _notifications,
           onHome: () => _open(AppScreen.home),
           onCases: () => _open(AppScreen.cases),
-          onMap: () => _open(AppScreen.map),
-          onSnap: () => _open(AppScreen.camera),
+          onMap: () => _setMapActiveCase(targetCase: null, routing: false),
+          onSnap: _openDirectCamera,
           onCase: _openCase,
         ),
-      AppScreen.camera => CameraScreen(
-          onBack: () => _open(AppScreen.home),
-          onSnap: (path) {
-            setState(() {
-              _capturedImagePath = path;
-              _screen = AppScreen.scanning;
-            });
-          },
-        ),
+      AppScreen.camera => Container(), // Shutter screen removed entirely
       AppScreen.scanning => ScanningScreen(
           imagePath: _capturedImagePath ?? 'assets/pothole-camera.png',
-          onComplete: () => _open(AppScreen.ticket),
+          orchestrationFuture: _orchestrationFuture,
+          onComplete: (res) {
+            setState(() {
+              _lastReportResponse = res;
+              _screen = AppScreen.ticket;
+            });
+          },
         ),
       AppScreen.ticket => TicketScreen(
           imagePath: _capturedImagePath ?? 'assets/pothole-camera.png',
           lat: _currentPosition?.latitude ?? 24.9180,
           lng: _currentPosition?.longitude ?? 67.0971,
-          onClose: () => _open(AppScreen.camera),
+          onClose: () => _open(AppScreen.home),
           onSubmit: _submitReport,
+          response: _lastReportResponse!,
         ),
       AppScreen.reward => RewardScreen(
           onHome: () => _open(AppScreen.home),
@@ -634,8 +769,8 @@ class _SnapCityShellState extends State<SnapCityShell> {
           onHome: () => _open(AppScreen.home),
           onCases: () => _open(AppScreen.cases),
           onFeed: () => _open(AppScreen.feed),
-          onMap: () => _open(AppScreen.map),
-          onSnap: () => _open(AppScreen.camera),
+          onMap: () => selectActiveCase(_selectedCase!, changeTab: true),
+          onSnap: _openDirectCamera,
         ),
     };
 

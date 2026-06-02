@@ -24,13 +24,12 @@ except Exception:
 
 # Map high-clarity emojis to each SnapCity Swarm component for premium terminal visualization
 EMOJI_MAP = {
-    "CIRO_Orchestrator": "🤖",
-    "CIRO_Report_API": "🚀",
-    "CIRO_API_v1": "🚀",
+    "SupervisorAgent": "🧠",
     "IngestionAgent": "👁️",
-    "ContextAgent": "🌐",
-    "ReasoningAgent": "🧠",
-    "DispatchAgent": "🚒"
+    "ContextAgent": "📚",
+    "ReasoningAgent": "⚙️",
+    "DispatchAgent": "🚀",
+    "AuthorityFinderAgent": "⚖️"
 }
 
 # 1. Elite Terminal & File Text Formatter
@@ -53,7 +52,7 @@ class JsonFormatter(logging.Formatter):
         }
         return json.dumps(log_data, ensure_ascii=False)
 
-logger = logging.getLogger("CIRO_Swarm")
+logger = logging.getLogger("SnapCity_Swarm")
 logger.setLevel(logging.DEBUG)
 
 # Standard Text File handler

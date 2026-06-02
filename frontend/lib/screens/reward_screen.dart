@@ -224,11 +224,15 @@ class _RewardScreenState extends State<RewardScreen> {
                         fontSize: 17,
                         color: SnapColors.purple,
                         fontWeight: FontWeight.w800)),
-                const SizedBox(height: 8),
                 Text(message,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 13, color: SnapColors.muted, height: 1.45)),
+                const SizedBox(height: 12),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 120),
+                  child: Image.asset('assets/Reward2.gif', height: 120, fit: BoxFit.contain),
+                ),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(14),

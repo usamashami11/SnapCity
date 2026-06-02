@@ -1,8 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../models.dart';
 import '../snapcity_theme.dart';
 import '../widgets.dart';
-import '../mock_data.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({
@@ -21,6 +22,11 @@ class HomeScreen extends StatelessWidget {
     required this.onCases,
     required this.onSnap,
     required this.onCase,
+    this.nearestCase,
+    this.currentPosition,
+    required this.onGoConfirm,
+    required this.activeCases,
+    required this.recentFixes,
   });
 
   final String userName;
@@ -37,6 +43,11 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback onCases;
   final VoidCallback onSnap;
   final ValueChanged<CivicCase> onCase;
+  final CivicCase? nearestCase;
+  final Position? currentPosition;
+  final ValueChanged<CivicCase> onGoConfirm;
+  final List<CivicCase> activeCases;
+  final List<CivicCase> recentFixes;
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +120,6 @@ class HomeScreen extends StatelessWidget {
                       ),
                       child: Stack(
                         children: [
-                          // 1) BACKGROUND IMAGE LAYER: Now expands fully to the container edges
                           Positioned.fill(
                             child: Transform.rotate(
                               angle: 3.14159,
@@ -124,7 +134,6 @@ class HomeScreen extends StatelessWidget {
                               ),
                             ),
                           ),
-                          // 2) CONTENT LAYER: Given explicit inner spacing away from card edges
                           Positioned(
                             left: 24.0,
                             right: 20.0,
@@ -195,13 +204,21 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   TaskCta(
-                    onTap: onMap,
+                    onTap: () {
+                      if (nearestCase != null) {
+                        onGoConfirm(nearestCase!);
+                      } else if (activeCases.isNotEmpty) {
+                        onGoConfirm(activeCases.first);
+                      } else {
+                        onMap();
+                      }
+                    },
                     location: currentArea,
                     distance: 'Near you',
                   ),
                   const SizedBox(height: 10),
                   SectionHeader(title: 'Your Active Cases', onAction: onCases),
-                  if (caseItems.isEmpty)
+                  if (activeCases.isEmpty)
                     const AppCard(
                       padding:
                           EdgeInsets.symmetric(vertical: 32, horizontal: 16),
@@ -220,8 +237,8 @@ class HomeScreen extends StatelessWidget {
                     AppCard(
                       child: Column(
                         children: [
-                          ...caseItems.take(2).map((item) {
-                            final isLast = item == caseItems.take(2).last;
+                          ...activeCases.take(2).map((item) {
+                            final isLast = item == activeCases.take(2).last;
                             return Column(
                               children: [
                                 ActiveCaseRow(
@@ -238,7 +255,7 @@ class HomeScreen extends StatelessWidget {
                   const SizedBox(height: 10),
                   SectionHeader(
                       title: "What's happening nearby", onAction: onMap),
-                  if (caseItems.isEmpty && feedCases.isEmpty)
+                  if (activeCases.isEmpty && recentFixes.isEmpty)
                     const AppCard(
                       padding:
                           EdgeInsets.symmetric(vertical: 32, horizontal: 16),
@@ -257,31 +274,31 @@ class HomeScreen extends StatelessWidget {
                     AppCard(
                       child: Column(
                         children: [
-                          if (caseItems.isNotEmpty)
+                          if (activeCases.isNotEmpty)
                             NearbyRow(
-                                item: caseItems[0],
-                                label: 'Verified',
-                                onTap: () => onCase(caseItems[0])),
-                          if (feedCases.length > 1) ...[
+                                item: activeCases[0],
+                                label: activeCases[0].status == 'Critical' ? 'Critical' : 'Verified',
+                                onTap: () => onCase(activeCases[0])),
+                          if (recentFixes.isNotEmpty) ...[
                             const Divider(height: 1, color: SnapColors.line),
                             NearbyRow(
-                                item: feedCases[1],
+                                item: recentFixes[0],
                                 label: 'Fixed',
-                                onTap: () => onCase(feedCases[1])),
+                                onTap: () => onCase(recentFixes[0])),
                           ],
-                          if (caseItems.length > 2) ...[
+                          if (activeCases.length > 1) ...[
                             const Divider(height: 1, color: SnapColors.line),
                             NearbyRow(
-                                item: caseItems[2],
-                                label: 'Action needed',
-                                onTap: () => onCase(caseItems[2])),
+                                item: activeCases[1],
+                                label: activeCases[1].status == 'Critical' ? 'Critical' : 'Action needed',
+                                onTap: () => onCase(activeCases[1])),
                           ],
                         ],
                       ),
                     ),
                   const SizedBox(height: 10),
                   SectionHeader(title: 'Recently Fixed', onAction: onFeed),
-                  if (feedCases.isEmpty)
+                  if (recentFixes.isEmpty)
                     const AppCard(
                       padding:
                           EdgeInsets.symmetric(vertical: 32, horizontal: 16),
@@ -297,7 +314,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                     )
                   else
-                    ...feedCases.take(2).map((item) => Padding(
+                    ...recentFixes.take(2).map((item) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: FeedRow(item: item, onTap: () => onCase(item)),
                         )),
@@ -306,6 +323,97 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
         ),
+        if (nearestCase != null)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 86,
+            child: AppCard(
+              radius: 16,
+              padding: const EdgeInsets.all(10),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: SizedBox(
+                      width: 58,
+                      height: 58,
+                      child: nearestCase!.image.startsWith('http')
+                          ? Image.network(nearestCase!.image, fit: BoxFit.cover)
+                          : nearestCase!.image.startsWith('/') || nearestCase!.image.contains(':/')
+                              ? Image.file(File(nearestCase!.image), fit: BoxFit.cover)
+                              : Image.asset(nearestCase!.image, fit: BoxFit.cover),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            StatusPill(
+                              nearestCase!.severity.toLowerCase() == 'high' ? 'Critical' : 'Nearest Hazard',
+                              color: nearestCase!.severity.toLowerCase() == 'high' ? SnapColors.danger : SnapColors.purple,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                nearestCase!.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          getDistanceText(currentPosition, nearestCase!.lat, nearestCase!.lng),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 10.5, color: SnapColors.muted, fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          getConfirmationsText(nearestCase!.reports),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () => onGoConfirm(nearestCase!),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: SnapColors.purple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('Confirm', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800)),
+                      ),
+                      const SizedBox(height: 4),
+                      OutlinedButton(
+                        onPressed: () => onCase(nearestCase!),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('View', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
         Align(
           alignment: Alignment.bottomCenter,
           child: SnapBottomNav(
@@ -465,6 +573,7 @@ class TaskCta extends StatelessWidget {
                           TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
                   Text('$location - $distance',
                       maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 10, color: Color(0xB317151C))),
                 ],
