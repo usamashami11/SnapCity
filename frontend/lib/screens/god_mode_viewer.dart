@@ -202,17 +202,17 @@ class _GodModeLogViewerScreenState extends State<GodModeLogViewerScreen> {
         bullets: bullets,
         confidence: confidence,
         tags: tags,
-        color: agent == 'ReasoningAgent'
+        color: (agent == 'ReasoningAgent' || agent == 'Reasoning Agent')
             ? Colors.deepPurpleAccent
-            : agent == 'ContextAgent'
+            : (agent == 'ContextAgent' || agent == 'Context Agent')
                 ? Colors.amberAccent
-                : agent == 'DispatchAgent'
+                : (agent == 'DispatchAgent' || agent == 'Dispatch Agent')
                     ? Colors.greenAccent
-                    : agent == 'IngestionAgent'
+                    : (agent == 'IngestionAgent' || agent == 'Ingestion Agent')
                         ? Colors.lightBlueAccent
-                        : (agent == 'CIRO_Report_API' || agent == 'CIRO_Orchestrator')
+                        : (agent == 'CIRO_Report_API' || agent == 'CIRO_Orchestrator' || agent == 'Supervisor Agent')
                             ? Colors.pinkAccent
-                            : agent == 'AuthorityFinderAgent'
+                            : (agent == 'AuthorityFinderAgent' || agent == 'AuthorityFinderService')
                                 ? Colors.tealAccent
                                 : Colors.white70,
       );

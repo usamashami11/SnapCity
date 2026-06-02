@@ -1,7 +1,7 @@
 from typing import Optional
 from utils.logger import get_agent_logger
 
-logger = get_agent_logger("AuthorityFinderAgent")
+logger = get_agent_logger("AuthorityFinderService")
 
 class AuthorityFinderService:
     """Geo-aware authority routing for Pakistan civic hazards."""

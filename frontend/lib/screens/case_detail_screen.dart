@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_email_sender/flutter_email_sender.dart';
 import '../models.dart';
 import '../snapcity_theme.dart';
 import '../widgets.dart';
@@ -178,22 +178,73 @@ class CaseDetailScreen extends StatelessWidget {
   }
 
   Future<void> _sendOfficialEmail(BuildContext context) async {
-    final Uri emailUri = Uri(
-        scheme: 'mailto',
-        path: 'authorities@sindh.gov.pk',
-        query: 'subject=Civic Issue Report&body=Please review this case.');
-    await launchUrl(emailUri, mode: LaunchMode.externalApplication);
-    if (context.mounted) {
-      _showPointsDialog(context); // Show +10 Civic Impact Points dialog
+    try {
+      final authority =
+          item.authorityEmail?.isNotEmpty == true ? item.authorityEmail! : '';
+
+      if (authority.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Authority email not available for this case. Please contact manually.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+        return;
+      }
+
+      final List<String> attachmentPaths =
+          _hasLocalImageAttachment() ? [item.image] : [];
+
+      final email = Email(
+        body: _buildOfficialEmailBody(),
+        subject:
+            'SnapCity Report [#${item.id}]: ${item.title} - ${item.severity} Priority',
+        recipients: [authority],
+        attachmentPaths: attachmentPaths,
+        isHTML: false,
+      );
+
+      await FlutterEmailSender.send(email);
+      if (context.mounted) {
+        _showPointsDialog(context);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unable to send email: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
     }
   }
 
   Future<void> _shareViaWhatsApp(BuildContext context) async {
-    final Uri waUri = Uri.parse(
-        "whatsapp://send?phone=+923000000000&text=Civic Issue Report");
-    await launchUrl(waUri, mode: LaunchMode.externalApplication);
-    if (context.mounted) {
-      _showPointsDialog(context); // Show +10 Civic Impact Points dialog
+    try {
+      final message = _buildFriendlyWhatsAppMessage();
+      final params = ShareParams(
+        text: message,
+        files:
+            _hasLocalImageAttachment() ? [XFile(File(item.image).path)] : null,
+      );
+
+      await SharePlus.instance.share(params);
+      if (context.mounted) {
+        _showPointsDialog(context);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unable to share on WhatsApp: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
     }
   }
 

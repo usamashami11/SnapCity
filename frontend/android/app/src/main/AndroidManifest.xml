@@ -4,9 +4,21 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
-    <queries> 
-      <intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="mailto" /></intent> 
-      <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="whatsapp" /></intent> 
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="whatsapp" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
     </queries>
 
     <application
@@ -34,11 +46,11 @@
         </activity>
         
         <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyBWkRqoIeEontm9IEq8ZhERQC6DBl7kHT8"/>
 
         <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyBWkRqoIeEontm9IEq8ZhERQC6DBl7kHT8" />
+            android:name="flutterEmbedding"
+            android:value="2" />
     </application>
 </manifest>

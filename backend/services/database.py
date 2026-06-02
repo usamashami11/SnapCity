@@ -8,24 +8,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
 
 print(f"\n{'='*80}")
-print(f"🔧 SUPABASE DATABASE INITIALIZATION (GOD MODE)")
+print(f"🔧 SUPABASE DATABASE INITIALIZATION")
 print(f"URL: {SUPABASE_URL}")
-print(f"KEY: {SUPABASE_SERVICE_ROLE_KEY[:20] if SUPABASE_SERVICE_ROLE_KEY else 'NOT SET'}... (SERVICE_ROLE)")
+print(f"KEY: {SUPABASE_ANON_KEY[:20] if SUPABASE_ANON_KEY else 'NOT SET'}...")
 print(f"{'='*80}\n")
 
 supabase: Optional[Client] = None
-if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
+if SUPABASE_URL and SUPABASE_ANON_KEY:
     try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        print("✅ Supabase client created successfully with SERVICE_ROLE")
+        supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        print("✅ Supabase client created successfully using Service Role/Admin key")
     except Exception as e:
         print(f"❌ CRITICAL: Failed to create Supabase client: {str(e)}")
         raise e
 else:
-    print(f"❌ CRITICAL: Missing environment variables. URL={bool(SUPABASE_URL)}, SERVICE_ROLE_KEY={bool(SUPABASE_SERVICE_ROLE_KEY)}")
+    print(f"❌ CRITICAL: Missing environment variables. URL={bool(SUPABASE_URL)}, KEY={bool(SUPABASE_ANON_KEY)}")
 
 
 def save_case(case_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -47,42 +47,144 @@ def save_case(case_data: Dict[str, Any]) -> Dict[str, Any]:
     print(f"{'='*80}")
     
     if supabase is None:
-        error_msg = "❌ CRITICAL: Supabase not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in backend/.env"
+        error_msg = "❌ CRITICAL: Supabase not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY in backend/.env"
         print(error_msg)
         raise Exception(error_msg)
     
     try:
         # Extract and validate case data
         report_id = case_data.get("report_id")
+        case_id = case_data.get("simulation_outcome", {}).get("case_id")
         lat = case_data.get("gps", {}).get("lat")
         lng = case_data.get("gps", {}).get("lng")
-        issue_type = case_data.get("ingestion", {}).get("classification") or case_data.get("detection", {}).get("issue_type")
+        issue_type = case_data.get("detection", {}).get("issue_type")
         severity_level = case_data.get("reasoning", {}).get("severity_level")
         
-        # Build row with strict schema matching for Phase 2 Godmode
+        print(f"📋 Extracted fields:")
+        print(f"   - report_id: {report_id}")
+        print(f"   - case_id: {case_id}")
+        print(f"   - lat: {lat}, lng: {lng}")
+        print(f"   - issue_type: {issue_type}")
+        print(f"   - severity_level: {severity_level}")
+        
+        # Build row with strict schema matching
         row = {
             "report_id": report_id,
+            "case_id": case_id,
+            "timestamp": case_data.get("timestamp"),
+            "image_url": case_data.get("image_url"),
             "lat": float(lat) if lat is not None else 0.0,
             "lng": float(lng) if lng is not None else 0.0,
-            "issue_type": issue_type,
-            "severity_level": severity_level,
-            "verification_count": 1,
-            "image_url": case_data.get("image_url"),
             "location_name": case_data.get("location_name") or case_data.get("context", {}).get("area"),
+            "classification": case_data.get("classification"),
+            "issue_type": issue_type,
+            "confidence_score": case_data.get("detection", {}).get("confidence_score"),
+            "area": case_data.get("context", {}).get("area"),
+            "severity_level": severity_level,
+            "supervisor_summary": case_data.get("reasoning", {}).get("escalation_reason") or case_data.get("escalation_reason"),
+            "verification_count": 1,
             "raw_data": case_data,
         }
         
-        print(f"\n📤 FORCING SUPABASE WRITE (BYPASSING RLS):")
-        print(f"   - Row: {json.dumps(row, indent=2, default=str)}")
+        print(f"\n📤 Sending upsert payload to Supabase:")
+        print(f"   - Table: 'cases'")
+        print(f"   - Rows: {json.dumps(row, indent=2, default=str)[:200]}...")
         
         # Execute insert with explicit error capture
-        response = supabase.table("cases").insert(row).execute()
-        print(f"✅ SUPABASE WRITE SUCCESS: {response.data}")
-        return response.data
+        print(f"\n🔄 Executing Supabase insert()...")
+        try:
+            response = supabase.table("cases").insert(row).execute()
+        except Exception as e:
+            print(f"SUPABASE ERROR: {e}")
+            from fastapi import HTTPException
+            raise HTTPException(status_code=500, detail=f"SUPABASE ERROR: {str(e)}")
+        
+        print(f"\n📬 Supabase response received:")
+        print(f"   - Status: Success")
+        print(f"   - Data: {response.data}")
+        
+        # Strict assertion: verify response contains data
+        if not response.data:
+            error_msg = f"❌ CRITICAL WRITE CRASH: Supabase insert returned empty data. Full response: {response}"
+            print(error_msg)
+            raise Exception(error_msg)
+        
+        print(f"\n✅ CASE WRITE SUCCESSFUL")
+        print(f"   - Case ID: {case_id}")
+        print(f"   - Verification Count: 1")
+        print(f"{'='*80}\n")
+        
+        return response.data[0] if isinstance(response.data, list) else response.data
         
     except Exception as e:
-        print(f"SUPABASE ERROR: {e}")
-        raise HTTPException(status_code=500, detail=f"Database force-write failed: {str(e)}")
+        error_msg = f"❌ CRITICAL WRITE CRASH: {str(e)}"
+        print(error_msg)
+        print(f"Exception type: {type(e).__name__}")
+        print(f"Full traceback: {e}")
+        print(f"{'='*80}\n")
+        raise e
+
+
+def increment_verification(case_id: str) -> Dict[str, Any]:
+    """
+    Increment the verification_count for a specific case by 1.
+    
+    Args:
+        case_id: The case ID to increment
+        
+    Returns:
+        Updated case data
+        
+    Raises:
+        Exception: If case not found or update fails
+    """
+    print(f"\n{'='*80}")
+    print(f"🔄 ATTEMPTING VERIFICATION COUNT INCREMENT")
+    print(f"Case ID: {case_id}")
+    print(f"{'='*80}")
+    
+    if supabase is None:
+        error_msg = "❌ CRITICAL: Supabase not configured"
+        print(error_msg)
+        raise Exception(error_msg)
+    
+    try:
+        # Fetch current count
+        print(f"\n📖 Fetching current case data...")
+        response = supabase.table("cases").select("verification_count").eq("case_id", case_id).execute()
+        
+        if not response.data:
+            error_msg = f"❌ CRITICAL: Case not found: {case_id}"
+            print(error_msg)
+            raise Exception(error_msg)
+        
+        current_count = response.data[0].get("verification_count", 0) or 0
+        new_count = current_count + 1
+        
+        print(f"   - Current verification_count: {current_count}")
+        print(f"   - New verification_count: {new_count}")
+        
+        # Update the count
+        print(f"\n📤 Updating verification_count to {new_count}...")
+        update_response = supabase.table("cases").update({"verification_count": new_count}).eq("case_id", case_id).execute()
+        
+        if not update_response.data:
+            error_msg = f"❌ CRITICAL WRITE CRASH: Update returned empty response for case {case_id}"
+            print(error_msg)
+            raise Exception(error_msg)
+        
+        print(f"✅ VERIFICATION COUNT INCREMENTED SUCCESSFULLY")
+        print(f"   - Case ID: {case_id}")
+        print(f"   - New Count: {new_count}")
+        print(f"{'='*80}\n")
+        
+        return {"case_id": case_id, "verification_count": new_count}
+        
+    except Exception as e:
+        error_msg = f"❌ CRITICAL INCREMENT CRASH: {str(e)}"
+        print(error_msg)
+        print(f"{'='*80}\n")
+        raise e
 
 
 def get_all_cases() -> List[Dict[str, Any]]:
@@ -91,32 +193,41 @@ def get_all_cases() -> List[Dict[str, Any]]:
         return []
     try:
         response = supabase.table("cases").select("*").order("created_at", desc=True).execute()
-        return response.data
+        results = []
+        for row in response.data:
+            raw_data = row.get("raw_data")
+            if not raw_data:
+                # Reconstruct raw_data from columns
+                raw_data = {
+                    "report_id": row.get("report_id") or "rep_unknown",
+                    "timestamp": row.get("timestamp") or row.get("created_at"),
+                    "image_url": row.get("image_url") or "",
+                    "gps": {"lat": row.get("lat") or 0.0, "lng": row.get("lng") or 0.0},
+                    "location_name": row.get("location_name") or row.get("area") or "",
+                    "classification": row.get("classification") or row.get("issue_type") or "",
+                    "detection": {
+                        "issue_type": row.get("issue_type") or "",
+                        "confidence_score": row.get("confidence_score") or 100,
+                    },
+                    "context": {
+                        "area": row.get("area") or row.get("location_name") or "",
+                        "similar_reports_nearby": 0,
+                    },
+                    "reasoning": {
+                        "severity_level": row.get("severity_level") or "MEDIUM",
+                    },
+                    "simulation_outcome": {
+                        "case_id": row.get("case_id") or row.get("report_id") or "SC-204",
+                        "assigned_responder": "Municipal Authority",
+                        "estimated_resolution_time": "3 days",
+                        "user_reward": {"civic_points_earned": 50, "message": "Good citizen reward!"}
+                    }
+                }
+            results.append(raw_data)
+        return results
     except Exception as e:
-        print(f"Error fetching cases: {e}")
+        print(f"Error fetching from Supabase: {e}")
         return []
-
-
-def increment_verification(report_id: str) -> Dict[str, Any]:
-    """Increments the verification_count for a specific case."""
-    if supabase is None:
-        raise Exception("Supabase not configured")
-    
-    try:
-        # First get current count
-        response = supabase.table("cases").select("verification_count").eq("report_id", report_id).execute()
-        if not response.data:
-            raise Exception(f"Case with report_id {report_id} not found")
-        
-        current_count = response.data[0].get("verification_count", 1)
-        new_count = current_count + 1
-        
-        # Update
-        update_res = supabase.table("cases").update({"verification_count": new_count}).eq("report_id", report_id).execute()
-        return update_res.data[0]
-    except Exception as e:
-        print(f"Error incrementing verification: {e}")
-        raise e
 
 
 def _haversine_distance_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:

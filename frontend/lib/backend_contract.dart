@@ -68,10 +68,10 @@ class AgentReportResponse {
     required this.noticeDraft,
     required this.imageUrl,
     required this.authority,
-    this.swarmLogs = const [],
     this.weather,
     this.traffic,
     this.timestamp,
+    this.logs,
   });
 
   final String caseId;
@@ -92,40 +92,57 @@ class AgentReportResponse {
   final String noticeDraft;
   final String imageUrl;
   final Map<String, dynamic> authority;
-  final List<dynamic> swarmLogs;
   final String? weather;
   final String? traffic;
   final String? timestamp;
+  final List<dynamic>? logs;
 
   factory AgentReportResponse.fromJson(Map<String, dynamic> json) {
     final detection = json['detection'] as Map<String, dynamic>? ?? {};
     final context = json['context'] as Map<String, dynamic>? ?? {};
     final reasoning = json['reasoning'] as Map<String, dynamic>? ?? {};
-    final outcome = json['simulation_outcome'] as Map<String, dynamic>? ?? {};
-
+    final simulation =
+        json['simulation_outcome'] as Map<String, dynamic>? ?? {};
+    final reward = simulation['user_reward'] as Map<String, dynamic>? ?? {};
     return AgentReportResponse(
-      caseId: outcome['case_id']?.toString() ?? 'SC-UNKNOWN',
-      issueType: detection['issue_type']?.toString() ?? 'Unknown Issue',
-      confidence: (detection['confidence_score'] as num?)?.toInt() ?? 0,
-      area: context['area']?.toString() ?? 'Unknown Area',
-      severity: reasoning['severity_level']?.toString() ?? 'Medium',
-      similarReports: (context['similar_reports_nearby'] as num?)?.toInt() ?? 0,
-      duplicateClusterId: context['duplicate_cluster_id']?.toString(),
-      lat: (json['gps'] as Map<String, dynamic>?)?['lat']?.toDouble(),
-      lng: (json['gps'] as Map<String, dynamic>?)?['lng']?.toDouble(),
-      locationName: json['location_name']?.toString(),
-      escalationReason: reasoning['escalation_reason']?.toString() ?? '',
-      assignedResponder: outcome['assigned_responder']?.toString() ?? '',
-      eta: outcome['estimated_resolution_time']?.toString() ?? '',
-      points: (outcome['user_reward']?['civic_points_earned'] as num?)?.toInt() ?? 0,
-      rewardMessage: outcome['user_reward']?['message']?.toString() ?? '',
-      noticeDraft: outcome['notice_draft']?.toString() ?? '',
-      imageUrl: json['image_url']?.toString() ?? '',
-      authority: json['authority'] as Map<String, dynamic>? ?? {},
-      swarmLogs: json['swarm_logs'] as List<dynamic>? ?? [],
-      weather: json['weather']?.toString(),
-      traffic: json['traffic']?.toString(),
-      timestamp: json['timestamp']?.toString(),
+      caseId: simulation['case_id'] as String? ?? json['case_id'] as String? ?? '',
+      issueType: detection['issue_type'] as String? ?? json['issue_type'] as String? ?? '',
+      confidence: detection['confidence_score'] as int? ?? json['confidence_score'] as int? ?? 0,
+      area: context['area'] as String? ?? json['area'] as String? ?? '',
+      severity: reasoning['severity_level'] as String? ?? json['severity_level'] as String? ?? '',
+      similarReports: context['similar_reports_nearby'] as int? ?? json['similar_reports_nearby'] as int? ?? 0,
+      duplicateClusterId: context['duplicate_cluster_id'] as String? ??
+          context['cluster_id'] as String? ??
+          json['duplicate_cluster_id'] as String?,
+      lat: (json['gps'] as Map<String, dynamic>?)?['lat'] is num
+          ? ((json['gps'] as Map<String, dynamic>)['lat'] as num).toDouble()
+          : (json['lat'] is num ? (json['lat'] as num).toDouble() : null),
+      lng: (json['gps'] as Map<String, dynamic>?)?['lng'] is num
+          ? ((json['gps'] as Map<String, dynamic>)['lng'] as num).toDouble()
+          : (json['lng'] is num ? (json['lng'] as num).toDouble() : null),
+      locationName: json['location_name'] as String?,
+      escalationReason: json['escalation_reason'] as String? ??
+          reasoning['escalation_reason'] as String? ??
+          json['risk_profile'] as String? ??
+          "Analyzing structural hazards...",
+      assignedResponder: json['assigned_responder'] as String? ??
+          simulation['assigned_responder'] as String? ??
+          json['responsible_authority'] as String? ??
+          "Municipal Authority",
+      eta: simulation['estimated_resolution_time'] as String? ?? json['estimated_resolution_time'] as String? ?? '',
+      points: reward['civic_points_earned'] as int? ?? json['civic_points_earned'] as int? ?? 0,
+      rewardMessage: reward['message'] as String? ?? json['reward_message'] as String? ?? '',
+      noticeDraft: simulation['notice_draft'] as String? ??
+          json['notice_draft'] as String? ??
+          '',
+      imageUrl: json['image_url'] as String? ?? '',
+      authority: simulation['authority'] as Map<String, dynamic>? ??
+          json['authority'] as Map<String, dynamic>? ??
+          {},
+      weather: context['weather_condition'] as String? ?? context['weather'] as String?,
+      traffic: context['traffic_impact'] as String? ?? context['traffic'] as String?,
+      timestamp: json['created_at'] as String? ?? json['timestamp'] as String?,
+      logs: json['logs'] as List<dynamic>? ?? json['agent_logs'] as List<dynamic>?,
     );
   }
 }

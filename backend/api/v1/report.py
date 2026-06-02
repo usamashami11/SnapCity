@@ -20,26 +20,52 @@ from services.database import save_case, get_all_cases
 from services.database import supabase
 
 router = APIRouter()
-logger = get_agent_logger("SupervisorAgent")
+logger = get_agent_logger("Supervisor Agent")
 
-
-def get_swarm_logs() -> list:
-    """Reads the last few entries from agent_traces.json to provide live telemetry."""
+def get_logs_for_report(report_id: str) -> list:
     logs = []
+    if not os.path.exists(JSON_FILE_PATH):
+        return logs
     try:
-        if os.path.exists(JSON_FILE_PATH):
-            with open(JSON_FILE_PATH, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                # Get last 50 lines to ensure we capture the current session's swarm activity
-                for line in lines[-50:]:
-                    try:
-                        logs.append(json.loads(line))
-                    except:
-                        continue
-    except Exception as e:
-        print(f"Error reading swarm logs: {e}")
-    return logs
+        with open(JSON_FILE_PATH, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    agent = data.get("agent")
+                    # Map old names to new names if any exist in the trace log
+                    if agent in ["CIRO_Orchestrator", "CIRO_Report_API", "SupervisorAgent"]:
+                        agent = "Supervisor Agent"
+                        data["agent"] = agent
+                        data["emoji"] = "🧠"
+                    elif agent in ["IngestionAgent", "Ingestion_Agent"]:
+                        agent = "Ingestion Agent"
+                        data["agent"] = agent
+                        data["emoji"] = "👁️"
+                    elif agent in ["ContextAgent", "Context_Agent", "AuthorityFinderAgent", "AuthorityFinderService"]:
+                        agent = "Context Agent"
+                        data["agent"] = agent
+                        data["emoji"] = "📚"
+                    elif agent in ["ReasoningAgent", "Reasoning_Agent"]:
+                        agent = "Reasoning Agent"
+                        data["agent"] = agent
+                        data["emoji"] = "⚙️"
+                    elif agent in ["DispatchAgent", "Dispatch_Agent"]:
+                        agent = "Dispatch Agent"
+                        data["agent"] = agent
+                        data["emoji"] = "🚀"
 
+                    if agent in ["Supervisor Agent", "Ingestion Agent", "Context Agent", "Reasoning Agent", "Dispatch Agent"]:
+                        msg = data.get("message", "")
+                        if report_id in msg or "unknown" in msg.lower() or not msg.startswith("["):
+                            logs.append(data)
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"Error fetching logs for report: {e}")
+    return logs
 
 # Define Data Models
 class GPSCoords(BaseModel):
@@ -70,8 +96,8 @@ current_report_id = "unknown"
 # Define Tools for Gemini Supervisor
 def validate_evidence(image_url: str, voice_note_transcript: str, lat: float, lng: float) -> dict:
     """Validates if the image and transcript describe a genuine civic infrastructure issue."""
-    logger.info("🤖 [Supervisor] Calling Tool: validate_evidence")
-    ingestion_logger = get_agent_logger("IngestionAgent")
+    logger.info("🧠 [Supervisor Agent] Calling Tool: validate_evidence")
+    ingestion_logger = get_agent_logger("Ingestion Agent")
     ingestion_logger.info("Supervisor requested evidence analysis. Ingesting payload details...")
     
     result = ingestion_agent.process({
@@ -85,8 +111,8 @@ def validate_evidence(image_url: str, voice_note_transcript: str, lat: float, ln
 
 def fuse_context(classification: str, lat: float, lng: float) -> dict:
     """Fuses coordinates with environmental telemetry (weather, traffic) and queries duplicate clusters."""
-    logger.info("🤖 [Supervisor] Calling Tool: fuse_context")
-    context_logger = get_agent_logger("ContextAgent")
+    logger.info("🧠 [Supervisor Agent] Calling Tool: fuse_context")
+    context_logger = get_agent_logger("Context Agent")
     context_logger.info("Supervisor requested signal fusion. Initiating telemetry APIs...")
     
     result = context_agent.process(
@@ -98,9 +124,9 @@ def fuse_context(classification: str, lat: float, lng: float) -> dict:
 
 def find_authority_routing(classification: str, area: str, lat: float, lng: float) -> dict:
     """Routes the reported issue to the matching Pakistan civic department based on coordinates and classification."""
-    logger.info("🤖 [Supervisor] Calling Tool: find_authority_routing")
-    authority_logger = get_agent_logger("AuthorityFinderAgent")
-    authority_logger.info("Supervisor requested routing path. Checking geo-boundary dictionary...")
+    logger.info("🧠 [Supervisor Agent] Calling Tool: find_authority_routing")
+    context_logger = get_agent_logger("Context Agent")
+    context_logger.info("Supervisor requested routing path. Checking geo-boundary dictionary...")
     
     result = authority_service.process(
         {"report_id": current_report_id, "gps": {"lat": lat, "lng": lng}},
@@ -112,8 +138,8 @@ def find_authority_routing(classification: str, area: str, lat: float, lng: floa
 
 def evaluate_threat_severity(classification: str, weather_condition: str, traffic_impact: str, area: str, similar_reports: int) -> dict:
     """Evaluates danger levels and dynamic severity using safety heuristics."""
-    logger.info("🤖 [Supervisor] Calling Tool: evaluate_threat_severity")
-    reasoning_logger = get_agent_logger("ReasoningAgent")
+    logger.info("🧠 [Supervisor Agent] Calling Tool: evaluate_threat_severity")
+    reasoning_logger = get_agent_logger("Reasoning Agent")
     reasoning_logger.info("Supervisor requested danger analysis. Traversing risk matrix check...")
     
     result = reasoning_agent.process(
@@ -130,8 +156,8 @@ def evaluate_threat_severity(classification: str, weather_condition: str, traffi
 
 def simulate_dispatch(classification: str, area: str, lat: float, lng: float, severity: str, justification: str, authority: dict) -> dict:
     """Generates municipal notice text, templates, ETA and civic rewards."""
-    logger.info("🤖 [Supervisor] Calling Tool: simulate_dispatch")
-    dispatch_logger = get_agent_logger("DispatchAgent")
+    logger.info("🧠 [Supervisor Agent] Calling Tool: simulate_dispatch")
+    dispatch_logger = get_agent_logger("Dispatch Agent")
     dispatch_logger.info("Supervisor requested dispatch action. Compiling copy templates...")
     
     result = dispatch_agent.process(
@@ -340,7 +366,7 @@ async def process_report(payload: ReportPayload):
                     f.write(json.dumps({
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "emoji": "❌",
-                        "agent": "SupervisorAgent",
+                        "agent": "Supervisor Agent",
                         "level": "WARNING",
                         "status": "REJECTED_NON_CIVIC",
                         "message": "The uploaded content does not contain an active civic infrastructure hazard."
@@ -397,7 +423,10 @@ async def process_report(payload: ReportPayload):
                 "user_reward": dispatch_result.get("user_reward", {})
             },
             "authority": dispatch_result.get("authority", authority_result),
-            "swarm_logs": get_swarm_logs()
+            
+            # Return explicit logs for all 5 agents
+            "logs": get_logs_for_report(payload.report_id),
+            "agent_logs": get_logs_for_report(payload.report_id)
         }
         
         # Persist to database
@@ -422,29 +451,35 @@ async def process_report(payload: ReportPayload):
 
 @router.put("/verify-case/{case_id}")
 async def verify_case(case_id: str):
-    """
-    Increment verification_count for a case when a user confirms they also encountered the issue.
-    
-    Args:
-        case_id: The case ID (maps to report_id) to increment
-    """
-    logger.info(f"🔄 VERIFICATION REQUEST: {case_id}")
+    """Increment verification_count for a case when a user confirms they also encountered the issue."""
+    logger.info(f"Verification request received for case: {case_id}")
     
     if supabase is None:
+        logger.error("Supabase not configured")
         raise HTTPException(status_code=500, detail="Database not configured")
     
     try:
-        # Import here to avoid circular dependency
-        from services.database import increment_verification
+        # Fetch current verification count
+        response = supabase.table("cases").select("verification_count").eq("case_id", case_id).execute()
         
-        # Call the database increment function
-        result = increment_verification(case_id)
+        if not response.data:
+            logger.warning(f"Case not found: {case_id}")
+            raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
         
-        return {
-            "status": "success",
-            "report_id": case_id,
-            "verification_count": result.get("verification_count")
-        }
+        current_count = response.data[0].get("verification_count", 0) or 0
+        new_count = current_count + 1
+        
+        # Update the verification count
+        update_response = supabase.table("cases").update({"verification_count": new_count}).eq("case_id", case_id).execute()
+        
+        if update_response.data:
+            logger.info(f"✅ Verification count incremented for {case_id}: {new_count}")
+            return {"status": "success", "case_id": case_id, "verification_count": new_count}
+        else:
+            raise Exception(f"Supabase update returned empty response")
+            
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"❌ Verification failed: {str(e)}")
+        logger.error(f"❌ Verification update failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")

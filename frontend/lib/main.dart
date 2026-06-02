@@ -137,7 +137,7 @@ class _SnapCityShellState extends State<SnapCityShell> {
   List<CivicCase> _myCases = [];
 
   Position? _currentPosition;
-  String _currentArea = 'Locating...';
+  String _currentArea = 'Your Area';
 
   List<CivicCase> _allGlobalCases = [];
   CivicCase? _nearestCase;
@@ -425,8 +425,8 @@ class _SnapCityShellState extends State<SnapCityShell> {
     _orchestrationFuture = ApiService().submitCivicReport(
       reportId: 'rep_${DateTime.now().millisecondsSinceEpoch}',
       localImagePath: _capturedImagePath!,
-      lat: _currentPosition?.latitude ?? 0.0,
-      lng: _currentPosition?.longitude ?? 0.0,
+      lat: _currentPosition?.latitude ?? 24.9180,
+      lng: _currentPosition?.longitude ?? 67.0971,
       voiceNoteTranscript: '',
       locationName: _currentArea,
     );

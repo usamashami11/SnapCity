@@ -93,9 +93,9 @@ class _ScanningScreenState extends State<ScanningScreen> {
             severity: 'Medium',
             similarReports: 1,
             duplicateClusterId: null,
-            lat: 0.0,
-            lng: 0.0,
-            locationName: 'Locating...',
+            lat: 24.9180,
+            lng: 67.0971,
+            locationName: 'Local Area',
             escalationReason: 'Automatic local network fallback triggered.',
             assignedResponder: 'SSWMB',
             eta: '48 Hours',
@@ -201,56 +201,51 @@ class _ScanningScreenState extends State<ScanningScreen> {
                   for (var i = 0; i < agentNames.length; i++)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Column(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                i < step
-                                    ? Icons.check_circle_rounded
-                                    : i == step
-                                        ? Icons.pending_rounded
-                                        : Icons.radio_button_unchecked_rounded,
-                                color: i < step
-                                    ? SnapColors.success
-                                    : i == step
-                                        ? SnapColors.purple
+                          Icon(
+                            i < step
+                                ? Icons.check_circle_rounded
+                                : i == step
+                                    ? Icons.pending_rounded
+                                    : Icons.radio_button_unchecked_rounded,
+                            color: i < step
+                                ? SnapColors.success
+                                : i == step
+                                    ? SnapColors.purple
+                                    : SnapColors.muted,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  agentNames[i],
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: i == step
+                                        ? FontWeight.w800
+                                        : FontWeight.bold,
+                                    color: i <= step
+                                        ? SnapColors.ink
                                         : SnapColors.muted,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      agentNames[i],
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: i == step
-                                            ? FontWeight.w800
-                                            : FontWeight.bold,
-                                        color: i <= step
-                                            ? SnapColors.ink
-                                            : SnapColors.muted,
-                                      ),
-                                    ),
-                                    Text(
-                                      agentTaglines[i],
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: i <= step
-                                            ? SnapColors.muted
-                                            : SnapColors.muted.withOpacity(0.5),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                                Text(
+                                  agentTaglines[i],
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: i <= step
+                                        ? SnapColors.muted
+                                        : SnapColors.muted.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),

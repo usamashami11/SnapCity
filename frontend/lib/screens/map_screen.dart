@@ -89,14 +89,7 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
     super.initState();
     _cases = widget.allGlobalCases;
     selectedCase = widget.targetFocusCase;
-    isRoutingActive = widget.initialRouted;
-
-    if (isRoutingActive && selectedCase != null) {
-      filter = selectedCase!.severity.toLowerCase() == 'high'
-          ? 'Critical'
-          : 'Needs proof';
-      _startLiveTracking(selectedCase!);
-    }
+    isRoutingActive = false; // Force default false on load to show "Confirm Case"
 
     _loadGlobalCases();
   }
@@ -117,12 +110,12 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Record updated!'),
+              content:
+                  Text('Record updated!'),
               duration: Duration(seconds: 2),
               backgroundColor: Color(0xFF6C5CE7),
             ),
           );
-          _loadGlobalCases(); // Refresh to show incremented count
         }
       } else {
         print('⚠️ Verification returned status: ${response.statusCode}');
@@ -670,11 +663,8 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                                         Text(
                                             isRoutingActive
                                                 ? (_remainingDistance != null
-                                                    ? (_remainingDistance! >=
-                                                            1000
-                                                        ? 'Distance: ${(_remainingDistance! / 1000).toStringAsFixed(2)} km'
-                                                        : 'Distance: ${_remainingDistance!.toStringAsFixed(0)} meters')
-                                                    : 'Locating...')
+                                                    ? 'Distance: ${_remainingDistance!.toStringAsFixed(0)} meters'
+                                                    : 'Routing...')
                                                 : getDistanceText(
                                                     widget.currentPosition,
                                                     displayCase.lat,

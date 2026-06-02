@@ -13,7 +13,7 @@ from services.weather import get_weather
 from services.traffic import get_traffic
 from services.database import get_nearby_cases_count, get_similar_cases
 
-logger = get_agent_logger("ContextAgent")
+logger = get_agent_logger("Context Agent")
 
 # Google GenAI client (safely initialized at import-time)
 client = None

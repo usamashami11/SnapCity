@@ -47,7 +47,7 @@ class _TicketScreenStateV2 extends State<TicketScreen> {
   double sheetOffset = 0;
   String? _voicePath;
   final _recorder = AudioRecorder();
-  String _currentArea = 'Locating...';
+  String _currentArea = 'Detecting location...';
 
   @override
   void initState() {
@@ -61,13 +61,12 @@ class _TicketScreenStateV2 extends State<TicketScreen> {
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
         setState(() {
-          _currentArea = place.locality ?? 'Your Area';
+          _currentArea = place.subLocality ?? place.locality ?? 'Your Area';
         });
       }
     } catch (e) {
-      setState(() => _currentArea = widget.response.area.isNotEmpty
-          ? widget.response.area
-          : 'Locating...');
+      setState(() => _currentArea =
+          widget.response.area.isNotEmpty ? widget.response.area : 'Your Area');
     }
   }
 
@@ -198,85 +197,6 @@ class _TicketScreenStateV2 extends State<TicketScreen> {
             ),
           ),
       ],
-    );
-  }
-}
-
-class GodmodeTelemetry extends StatelessWidget {
-  const GodmodeTelemetry({super.key, required this.logs});
-  final List<dynamic> logs;
-
-  @override
-  Widget build(BuildContext context) {
-    final agents = [
-      {'name': 'SupervisorAgent', 'emoji': '🧠'},
-      {'name': 'IngestionAgent', 'emoji': '👁️'},
-      {'name': 'ContextAgent', 'emoji': '🌐'},
-      {'name': 'ReasoningAgent', 'emoji': '⚙️'},
-      {'name': 'DispatchAgent', 'emoji': '🚀'},
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('GODMODE LIVE TELEMETRY',
-            style: TextStyle(
-                fontSize: 10,
-                color: SnapColors.purple,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.2)),
-        const SizedBox(height: 12),
-        for (final agent in agents)
-          _buildAgentLog(agent['name']!, agent['emoji']!,
-              logs.where((l) => l['agent'] == agent['name']).toList()),
-      ],
-    );
-  }
-
-  Widget _buildAgentLog(String name, String emoji, List<dynamic> agentLogs) {
-    return Theme(
-      data: ThemeData().copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        leading: Text(emoji, style: const TextStyle(fontSize: 20)),
-        title: Text(name,
-            style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: SnapColors.ink)),
-        subtitle: Text('${agentLogs.length} frames captured',
-            style: const TextStyle(fontSize: 11, color: SnapColors.muted)),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.only(bottom: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8F9FA),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE9ECEF)),
-            ),
-            child: agentLogs.isEmpty
-                ? const Text('No logs for this agent session.',
-                    style: TextStyle(fontSize: 12, color: SnapColors.muted))
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: agentLogs.map((l) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(
-                          '• ${l['message']}',
-                          style: const TextStyle(
-                              fontSize: 11,
-                              fontFamily: 'monospace',
-                              color: Color(0xFF495057)),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -440,20 +360,8 @@ class TicketContentV2 extends StatelessWidget {
                 value: response.assignedResponder),
           ],
         ),
-        const Divider(height: 32),
-        GodmodeTelemetry(logs: response.swarmLogs),
-        const Divider(height: 32),
-        Row(
-          children: [
-            const Icon(Icons.stars_rounded, color: SnapColors.yellow, size: 24),
-            const SizedBox(width: 8),
-            Text('Impact: +${response.points} Points',
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: SnapColors.ink)),
-          ],
-        ),
+        const SizedBox(height: 12),
+        AgentLogsPreview(response: response),
         const Divider(height: 16),
         Row(
           children: [
@@ -633,6 +541,188 @@ class TicketField extends StatelessWidget {
             ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+class AgentLogsPreview extends StatefulWidget {
+  final AgentReportResponse response;
+  const AgentLogsPreview({super.key, required this.response});
+
+  @override
+  State<AgentLogsPreview> createState() => _AgentLogsPreviewState();
+}
+
+class _AgentLogsPreviewState extends State<AgentLogsPreview> {
+  final Map<String, bool> _expanded = {
+    'Supervisor Agent': false,
+    'Ingestion Agent': false,
+    'Context Agent': false,
+    'Reasoning Agent': false,
+    'Dispatch Agent': false,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final logs = widget.response.logs ?? [];
+    
+    // Group logs by agent
+    final Map<String, List<Map<String, dynamic>>> groupedLogs = {
+      'Supervisor Agent': [],
+      'Ingestion Agent': [],
+      'Context Agent': [],
+      'Reasoning Agent': [],
+      'Dispatch Agent': [],
+    };
+
+    for (var log in logs) {
+      if (log is Map<String, dynamic>) {
+        final agentName = log['agent']?.toString() ?? '';
+        if (groupedLogs.containsKey(agentName)) {
+          groupedLogs[agentName]!.add(log);
+        }
+      }
+    }
+
+    final agentMetadata = {
+      'Supervisor Agent': {'emoji': '🧠', 'color': SnapColors.purple},
+      'Ingestion Agent': {'emoji': '👁️', 'color': Colors.blue},
+      'Context Agent': {'emoji': '📚', 'color': Colors.amber},
+      'Reasoning Agent': {'emoji': '⚙️', 'color': Colors.deepOrange},
+      'Dispatch Agent': {'emoji': '🚀', 'color': Colors.green},
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'LIVE SWARM LOG PREVIEW',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            color: SnapColors.purple,
+            letterSpacing: 1.1,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...groupedLogs.keys.map((agent) {
+          final isExpanded = _expanded[agent] ?? false;
+          final agentLogs = groupedLogs[agent] ?? [];
+          final meta = agentMetadata[agent]!;
+          final emoji = meta['emoji'] as String;
+          final color = meta['color'] as Color;
+
+          return Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8F7F9),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFEFECEF)),
+            ),
+            child: Column(
+              children: [
+                ListTile(
+                  onTap: () {
+                    setState(() {
+                      _expanded[agent] = !isExpanded;
+                    });
+                  },
+                  dense: true,
+                  leading: Text(
+                    emoji,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  title: Text(
+                    agent,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      color: SnapColors.ink,
+                    ),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '${agentLogs.length} events',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: color,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                        size: 18,
+                        color: SnapColors.muted,
+                      ),
+                    ],
+                  ),
+                ),
+                if (isExpanded) ...[
+                  const Divider(height: 1, color: Color(0xFFEFECEF)),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+                    child: agentLogs.isEmpty
+                        ? const Text(
+                            'No telemetry recorded for this agent in current lifecycle run.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: SnapColors.muted,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: agentLogs.map((log) {
+                              final time = log['timestamp']?.toString().split(' ').last ?? '';
+                              final msg = log['message']?.toString() ?? '';
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 3),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '[$time]',
+                                      style: const TextStyle(
+                                        fontSize: 9.5,
+                                        fontFamily: 'Courier',
+                                        fontWeight: FontWeight.bold,
+                                        color: SnapColors.muted,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        msg.replaceAll(RegExp(r'^\[.*?\]\s*'), ''),
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          height: 1.35,
+                                          fontWeight: FontWeight.w600,
+                                          color: SnapColors.ink,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }).toList(),
       ],
     );
   }

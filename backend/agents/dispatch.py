@@ -9,7 +9,7 @@ from google import genai
 from google.genai import types
 from utils.logger import get_agent_logger
 
-logger = get_agent_logger("DispatchAgent")
+logger = get_agent_logger("Dispatch Agent")
 
 # Google GenAI client (safely initialized at import-time)
 client = None

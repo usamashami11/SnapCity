@@ -10,7 +10,7 @@ from google import genai
 from google.genai import types
 from utils.logger import get_agent_logger
 
-logger = get_agent_logger("ReasoningAgent")
+logger = get_agent_logger("Reasoning Agent")
 
 # Google GenAI client (safely initialized at import-time)
 client = None
