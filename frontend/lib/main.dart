@@ -611,6 +611,10 @@ class _SnapCityShellState extends State<SnapCityShell> {
     try {
       final response = _lastReportResponse!;
 
+      // The backend already handles saving the case to Supabase via the submitCivicReport call
+      // which is executed during the scanning screen orchestration phase.
+      // Here we update the local state to reflect the submission.
+
       setState(() {
         _submittingReport = false;
         _screen = AppScreen.reward;
@@ -646,11 +650,15 @@ class _SnapCityShellState extends State<SnapCityShell> {
           authorityWhatsapp: response.authority['whatsapp'] as String? ?? '',
           weather: response.weather,
           traffic: response.traffic,
+          timestamp: response.timestamp,
         );
         _myCases.insert(0, newCase);
 
         _saveStats();
       });
+
+      // Reload global cases to ensure the map and cases tab are updated immediately
+      _loadGlobalCases();
 
       _showNotification(
         'Report Processed!',

@@ -89,7 +89,8 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
     super.initState();
     _cases = widget.allGlobalCases;
     selectedCase = widget.targetFocusCase;
-    isRoutingActive = false; // Force default false on load to show "Confirm Case"
+    isRoutingActive =
+        false; // Force default false on load to show "Confirm Case"
 
     _loadGlobalCases();
   }
@@ -110,8 +111,7 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content:
-                  Text('Record updated!'),
+              content: Text('Record updated!'),
               duration: Duration(seconds: 2),
               backgroundColor: Color(0xFF6C5CE7),
             ),
@@ -184,10 +184,27 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
     setState(() {
       isRoutingActive = true;
       mapPolylines.clear();
+      // Pre-draw initial line if user position is available
+      if (widget.currentPosition != null) {
+        mapPolylines.add(
+          Polyline(
+            points: [
+              LatLng(widget.currentPosition!.latitude,
+                  widget.currentPosition!.longitude),
+              LatLng(target.lat!, target.lng!),
+            ],
+            color: Colors.indigo,
+            strokeWidth: 5,
+          ),
+        );
+      }
       _remainingDistance = null;
       _geofenceDialogShown = false;
       _geofenceReached = false;
     });
+
+    setState(
+        () {}); // Explicitly call setState as requested after initial clear/add
 
     _positionStreamSubscription?.cancel();
 
@@ -219,18 +236,18 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
 
         // Update polyline while user is navigating
         if (dist > 15.0) {
-          setState(() {
-            mapPolylines = {
-              Polyline(
-                points: [
-                  LatLng(position.latitude, position.longitude),
-                  LatLng(target.lat!, target.lng!),
-                ],
-                color: Colors.indigo,
-                strokeWidth: 4.5,
-              )
-            };
-          });
+          mapPolylines.clear();
+          mapPolylines.add(
+            Polyline(
+              points: [
+                LatLng(position.latitude, position.longitude),
+                LatLng(target.lat!, target.lng!),
+              ],
+              color: Colors.indigo,
+              strokeWidth: 5,
+            ),
+          );
+          setState(() {});
           print(
               '   📍 Drawing polyline, distance: ${(dist / 1000).toStringAsFixed(2)} km');
         } else {
@@ -494,7 +511,7 @@ class _CivicMapScreenState extends State<CivicMapScreen> {
                     }),
                   ],
                 ),
-                if (isRoutingActive && mapPolylines.isNotEmpty)
+                if (mapPolylines.isNotEmpty)
                   PolylineLayer(
                     polylines: mapPolylines.toList(),
                   ),

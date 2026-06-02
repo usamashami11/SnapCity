@@ -328,40 +328,29 @@ class TicketContentV2 extends StatelessWidget {
                     : SnapColors.success),
           ],
         ),
-        const SizedBox(height: 10),
-        GridView.count(
-          crossAxisCount: 2,
-          childAspectRatio: 2.35,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          children: [
-            TicketField(
-                icon: Icons.map_outlined, label: 'Location', value: areaName),
-            TicketField(
-                icon: Icons.auto_awesome_rounded,
-                label: 'Confidence',
-                value: "${response.confidence}% Confidence"),
-            TicketField(
-                icon: Icons.cases_outlined,
-                label: 'Similar reports',
-                value: "${response.similarReports} reports nearby"),
-            TicketField(
-                icon: Icons.shield_outlined,
-                label: 'Case strength',
-                value: "Strength: ${response.confidence}%"),
-            TicketField(
-                icon: Icons.warning_amber_rounded,
-                label: 'Risk Profile',
-                value: response.escalationReason,
-                danger: true),
-            TicketField(
-                icon: Icons.engineering_outlined,
-                label: 'Responsible Group',
-                value: response.assignedResponder),
-          ],
-        ),
         const SizedBox(height: 12),
-        AgentLogsPreview(response: response),
+        TicketField(
+            icon: Icons.auto_awesome_rounded,
+            label: 'Confidence',
+            value: "${response.confidence}% Confidence"),
+        TicketField(
+            icon: Icons.cases_outlined,
+            label: 'Similar reports',
+            value: "${response.similarReports} reports nearby"),
+        TicketField(
+            icon: Icons.shield_outlined,
+            label: 'Case strength',
+            value: "Strength: ${response.confidence}%"),
+        TicketField(
+            icon: Icons.warning_amber_rounded,
+            label: 'Risk Profile',
+            value: response.escalationReason,
+            danger: true),
+        TicketField(
+            icon: Icons.engineering_outlined,
+            label: 'Responsible Group',
+            value: response.assignedResponder),
+        const SizedBox(height: 12),
         const Divider(height: 16),
         Row(
           children: [
@@ -410,7 +399,7 @@ class TicketContentV2 extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0x1A48117F))),
             child: const Text(
-                'AI voice translation preview\n"Recording saved. AI will transcribe this on submission."',
+                'Voice note attached\n"Recording saved and will be uploaded with your report."',
                 style: TextStyle(fontSize: 12, height: 1.35)),
           ),
         const SizedBox(height: 12),
@@ -508,222 +497,43 @@ class TicketField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 22,
-          height: 22,
-          decoration: BoxDecoration(
-              color: const Color(0xFFF3F0F7),
-              borderRadius: BorderRadius.circular(8)),
-          child: Icon(icon, size: 14, color: SnapColors.purple),
-        ),
-        const SizedBox(width: 7),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  maxLines: 1,
-                  style: const TextStyle(
-                      fontSize: 11,
-                      color: SnapColors.muted,
-                      fontWeight: FontWeight.w600)),
-              Text(value,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: danger ? FontWeight.bold : FontWeight.w800,
-                      color: danger ? SnapColors.danger : SnapColors.ink,
-                      height: 1.1)),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class AgentLogsPreview extends StatefulWidget {
-  final AgentReportResponse response;
-  const AgentLogsPreview({super.key, required this.response});
-
-  @override
-  State<AgentLogsPreview> createState() => _AgentLogsPreviewState();
-}
-
-class _AgentLogsPreviewState extends State<AgentLogsPreview> {
-  final Map<String, bool> _expanded = {
-    'Supervisor Agent': false,
-    'Ingestion Agent': false,
-    'Context Agent': false,
-    'Reasoning Agent': false,
-    'Dispatch Agent': false,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final logs = widget.response.logs ?? [];
-    
-    // Group logs by agent
-    final Map<String, List<Map<String, dynamic>>> groupedLogs = {
-      'Supervisor Agent': [],
-      'Ingestion Agent': [],
-      'Context Agent': [],
-      'Reasoning Agent': [],
-      'Dispatch Agent': [],
-    };
-
-    for (var log in logs) {
-      if (log is Map<String, dynamic>) {
-        final agentName = log['agent']?.toString() ?? '';
-        if (groupedLogs.containsKey(agentName)) {
-          groupedLogs[agentName]!.add(log);
-        }
-      }
-    }
-
-    final agentMetadata = {
-      'Supervisor Agent': {'emoji': '🧠', 'color': SnapColors.purple},
-      'Ingestion Agent': {'emoji': '👁️', 'color': Colors.blue},
-      'Context Agent': {'emoji': '📚', 'color': Colors.amber},
-      'Reasoning Agent': {'emoji': '⚙️', 'color': Colors.deepOrange},
-      'Dispatch Agent': {'emoji': '🚀', 'color': Colors.green},
-    };
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'LIVE SWARM LOG PREVIEW',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-            color: SnapColors.purple,
-            letterSpacing: 1.1,
-          ),
-        ),
-        const SizedBox(height: 8),
-        ...groupedLogs.keys.map((agent) {
-          final isExpanded = _expanded[agent] ?? false;
-          final agentLogs = groupedLogs[agent] ?? [];
-          final meta = agentMetadata[agent]!;
-          final emoji = meta['emoji'] as String;
-          final color = meta['color'] as Color;
-
-          return Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 22,
+            height: 22,
             decoration: BoxDecoration(
-              color: const Color(0xFFF8F7F9),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFEFECEF)),
-            ),
+                color: const Color(0xFFF3F0F7),
+                borderRadius: BorderRadius.circular(8)),
+            child: Icon(icon, size: 14, color: SnapColors.purple),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ListTile(
-                  onTap: () {
-                    setState(() {
-                      _expanded[agent] = !isExpanded;
-                    });
-                  },
-                  dense: true,
-                  leading: Text(
-                    emoji,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  title: Text(
-                    agent,
+                Text(label,
+                    maxLines: 1,
                     style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13,
-                      color: SnapColors.ink,
-                    ),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          '${agentLogs.length} events',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: color,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                        size: 18,
+                        fontSize: 11,
                         color: SnapColors.muted,
-                      ),
-                    ],
-                  ),
-                ),
-                if (isExpanded) ...[
-                  const Divider(height: 1, color: Color(0xFFEFECEF)),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
-                    child: agentLogs.isEmpty
-                        ? const Text(
-                            'No telemetry recorded for this agent in current lifecycle run.',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: SnapColors.muted,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: agentLogs.map((log) {
-                              final time = log['timestamp']?.toString().split(' ').last ?? '';
-                              final msg = log['message']?.toString() ?? '';
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 3),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '[$time]',
-                                      style: const TextStyle(
-                                        fontSize: 9.5,
-                                        fontFamily: 'Courier',
-                                        fontWeight: FontWeight.bold,
-                                        color: SnapColors.muted,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
-                                        msg.replaceAll(RegExp(r'^\[.*?\]\s*'), ''),
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          height: 1.35,
-                                          fontWeight: FontWeight.w600,
-                                          color: SnapColors.ink,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                  ),
-                ],
+                        fontWeight: FontWeight.w600)),
+                Text(value,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: danger ? FontWeight.bold : FontWeight.w800,
+                        color: danger ? SnapColors.danger : SnapColors.ink,
+                        height: 1.1)),
               ],
             ),
-          );
-        }).toList(),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }

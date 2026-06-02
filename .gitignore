@@ -5,6 +5,7 @@
 .env
 backend/.env
 frontend/.env
+frontend/android/local.properties
 *.key
 deploy_to_gcp.bat
 *.keystore

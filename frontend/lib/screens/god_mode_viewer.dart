@@ -17,7 +17,7 @@ class GodModeLogViewerScreen extends StatefulWidget {
 }
 
 class _GodModeLogViewerScreenState extends State<GodModeLogViewerScreen> {
-  final List<String> _logs = [];
+  final List<Map<String, dynamic>> _logs = [];
   Timer? _pollingTimer;
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = true;
@@ -50,14 +50,8 @@ class _GodModeLogViewerScreenState extends State<GodModeLogViewerScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List<dynamic> logData = data['logs'] ?? [];
-        final fetchedLogs = logData.map((e) {
-          if (e is Map<String, dynamic>) {
-            final agent = e['agent'] ?? 'System';
-            final message = e['message'] ?? jsonEncode(e);
-            return '[$agent] $message';
-          }
-          return e.toString();
-        }).toList();
+        final List<Map<String, dynamic>> fetchedLogs =
+            logData.whereType<Map<String, dynamic>>().toList();
 
         if (mounted) {
           setState(() {
@@ -90,14 +84,8 @@ class _GodModeLogViewerScreenState extends State<GodModeLogViewerScreen> {
           if (response.statusCode == 200) {
             final data = jsonDecode(response.body);
             final List<dynamic> logData = data['logs'] ?? [];
-            final fetchedLogs = logData.map((e) {
-              if (e is Map<String, dynamic>) {
-                final agent = e['agent'] ?? 'System';
-                final message = e['message'] ?? jsonEncode(e);
-                return '[$agent] $message';
-              }
-              return e.toString();
-            }).toList();
+            final List<Map<String, dynamic>> fetchedLogs =
+                logData.whereType<Map<String, dynamic>>().toList();
             if (mounted) {
               setState(() {
                 _logs.clear();
@@ -134,9 +122,8 @@ class _GodModeLogViewerScreenState extends State<GodModeLogViewerScreen> {
     }
   }
 
-  String _extractAgent(String line) {
-    final match = RegExp(r'^\[(.*?)\]').firstMatch(line);
-    return match?.group(1) ?? 'System';
+  String _extractAgent(Map<String, dynamic> log) {
+    return log['agent']?.toString() ?? 'System';
   }
 
   int? _extractConfidence(String text) {
@@ -164,8 +151,7 @@ class _GodModeLogViewerScreenState extends State<GodModeLogViewerScreen> {
   }
 
   List<String> _extractBullets(String raw) {
-    final cleaned = raw.replaceAll(RegExp(r'^\[.*?\]\s*'), '');
-    final parts = cleaned
+    final parts = raw
         .split(RegExp(r'\s*[\|;]\s*|\.\s+| - '))
         .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
@@ -175,46 +161,71 @@ class _GodModeLogViewerScreenState extends State<GodModeLogViewerScreen> {
   }
 
   List<_AgentLogCard> _buildAgentCards() {
-    final grouped = <String, List<String>>{};
-    for (final line in _logs) {
-      final agent = _extractAgent(line);
-      grouped.putIfAbsent(agent, () => []).add(line);
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final log in _logs) {
+      final rawAgent = _extractAgent(log);
+      String agentName = rawAgent;
+
+      // Map to 5-Agent Unification
+      if (rawAgent.contains('Supervisor') ||
+          rawAgent.contains('Orchestrator') ||
+          rawAgent.contains('CIRO') ||
+          rawAgent.contains('System') ||
+          rawAgent.contains('Simulator')) {
+        agentName = '🧠 Supervisor Agent';
+      } else if (rawAgent.contains('Ingestion')) {
+        agentName = '👁️ Ingestion Agent';
+      } else if (rawAgent.contains('Context') || rawAgent.contains('Critic')) {
+        agentName = '📚 Context Agent';
+      } else if (rawAgent.contains('Reasoning')) {
+        agentName = '⚙️ Reasoning Agent';
+      } else if (rawAgent.contains('Dispatch')) {
+        agentName = '🚀 Dispatch Agent';
+      }
+
+      grouped.putIfAbsent(agentName, () => []).add(log);
     }
 
-    return grouped.entries.map((entry) {
-      final agent = entry.key;
-      final lines = entry.value;
-      final combined = lines.join(' | ');
-      final raw = combined.replaceAll(RegExp(r'^\[.*?\]\s*'), '');
+    final agentOrder = [
+      '🧠 Supervisor Agent',
+      '👁️ Ingestion Agent',
+      '📚 Context Agent',
+      '⚙️ Reasoning Agent',
+      '🚀 Dispatch Agent'
+    ];
+
+    return agentOrder.map((agent) {
+      final logs = grouped[agent] ?? [];
+      final messages = logs.map((l) => l['message']?.toString() ?? '').toList();
+      final combined = messages.join(' | ');
       final confidence = _extractConfidence(combined);
       final clusterId = _extractClusterId(combined);
       final location = _extractLocation(combined);
-      final bullets = _extractBullets(raw);
+      final bullets = _extractBullets(combined);
       final tags = <String>[];
       if (clusterId != null) tags.add('Cluster: $clusterId');
       if (location != null) tags.add('Location: $location');
       if (confidence != null) tags.add('Confidence: $confidence%');
-      if (lines.length > 1) tags.add('${lines.length} events');
+      if (logs.isNotEmpty) tags.add('${logs.length} events');
 
       return _AgentLogCard(
         agent: agent,
-        summary: lines.first.replaceAll(RegExp(r'^\[.*?\]\s*'), ''),
+        summary: logs.isNotEmpty
+            ? (logs.first['message']?.toString() ?? 'No message')
+            : 'Waiting for telemetry...',
         bullets: bullets,
         confidence: confidence,
         tags: tags,
-        color: (agent == 'ReasoningAgent' || agent == 'Reasoning Agent')
+        logs: logs,
+        color: agent.contains('Reasoning')
             ? Colors.deepPurpleAccent
-            : (agent == 'ContextAgent' || agent == 'Context Agent')
+            : agent.contains('Context')
                 ? Colors.amberAccent
-                : (agent == 'DispatchAgent' || agent == 'Dispatch Agent')
+                : agent.contains('Dispatch')
                     ? Colors.greenAccent
-                    : (agent == 'IngestionAgent' || agent == 'Ingestion Agent')
+                    : agent.contains('Ingestion')
                         ? Colors.lightBlueAccent
-                        : (agent == 'CIRO_Report_API' || agent == 'CIRO_Orchestrator' || agent == 'Supervisor Agent')
-                            ? Colors.pinkAccent
-                            : (agent == 'AuthorityFinderAgent' || agent == 'AuthorityFinderService')
-                                ? Colors.tealAccent
-                                : Colors.white70,
+                        : Colors.pinkAccent,
       );
     }).toList();
   }
@@ -421,7 +432,6 @@ class _GodModeLogViewerScreenState extends State<GodModeLogViewerScreen> {
     final confidence = card.confidence ?? 0;
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF101523),
         borderRadius: BorderRadius.circular(18),
@@ -434,106 +444,138 @@ class _GodModeLogViewerScreenState extends State<GodModeLogViewerScreen> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: card.color,
-                  shape: BoxShape.circle,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.all(16),
+          leading: Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: card.color,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: card.color.withOpacity(0.4),
+                  blurRadius: 8,
+                  spreadRadius: 2,
                 ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                card.agent,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                ),
-              ),
-              const Spacer(),
-              if (card.tags.isNotEmpty)
-                StatusPill(card.tags.first, color: Colors.white70),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: card.tags
-                .map((tag) => StatusPill(tag, color: Colors.white70))
-                .toList(),
+          title: Text(
+            card.agent,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
           ),
-          if (card.confidence != null) ...[
-            const SizedBox(height: 14),
-            Text(
-              'Confidence score',
-              style: TextStyle(
-                  color: Colors.white70.withOpacity(0.9), fontSize: 12),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Text(
+              card.summary,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white54, fontSize: 13),
             ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: LinearProgressIndicator(
-                value: confidence / 100,
-                minHeight: 8,
-                backgroundColor: Colors.white10,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  confidence >= 75
-                      ? SnapColors.success
-                      : confidence >= 45
-                          ? Colors.orangeAccent
-                          : SnapColors.danger,
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '$confidence% confidence',
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-          ],
-          const SizedBox(height: 14),
-          Column(
-            children: card.bullets
-                .map((bullet) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            card.agent == 'ReasoningAgent'
-                                ? Icons.radar
-                                : card.agent == 'ContextAgent'
-                                    ? Icons.location_on_rounded
-                                    : card.agent == 'DispatchAgent'
-                                        ? Icons.send_rounded
-                                        : Icons.memory_rounded,
-                            size: 18,
-                            color: Colors.white70,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              bullet,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                                height: 1.5,
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Divider(color: Colors.white10, height: 20),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: card.tags
+                        .map((tag) => StatusPill(tag, color: Colors.white70))
+                        .toList(),
+                  ),
+                  if (card.confidence != null) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      'Confidence score',
+                      style: TextStyle(
+                          color: Colors.white70.withOpacity(0.9), fontSize: 12),
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
+                        value: confidence / 100,
+                        minHeight: 8,
+                        backgroundColor: Colors.white10,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          confidence >= 75
+                              ? SnapColors.success
+                              : confidence >= 45
+                                  ? Colors.orangeAccent
+                                  : SnapColors.danger,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  const Text(
+                    'DETAILED TRACES',
+                    style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (card.logs.isEmpty)
+                    const Text(
+                      'No telemetry traces received yet.',
+                      style: TextStyle(
+                          color: Colors.white24,
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic),
+                    )
+                  else
+                    ...card.logs.map((log) {
+                      final time =
+                          log['timestamp']?.toString().split(' ').last ?? '';
+                      final msg = log['message']?.toString() ?? '';
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '[$time]',
+                              style: TextStyle(
+                                color: card.color.withOpacity(0.7),
+                                fontFamily: 'Courier',
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ))
-                .toList(),
-          ),
-        ],
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                msg,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -546,6 +588,7 @@ class _AgentLogCard {
     required this.bullets,
     required this.tags,
     required this.color,
+    required this.logs,
     this.confidence,
   });
 
@@ -555,6 +598,7 @@ class _AgentLogCard {
   final List<String> tags;
   final Color color;
   final int? confidence;
+  final List<Map<String, dynamic>> logs;
 }
 
 extension ColorDarken on Color {
