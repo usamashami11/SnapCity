@@ -34,7 +34,7 @@ _Turn every citizen snapshot into a validated, routed, and trackable municipal r
 ## The Problem & The Solution
 
 - **The problem:** Civic hazards are reported through fragmented channels with no validation, weak location context, and slow hand-offs to the right municipal authority.
-- **Our solution:** **SnapCity CIRO** (_Crisis Intelligence & Response Orchestrator_) — a **Flutter** citizen app and **FastAPI** agentic swarm that validates evidence with **Gemini 2.5 Flash**, fuses regional incident clusters, and simulates dispatch to authorities (e.g. **SSWMB Hyderabad** → `info@sswmb.gos.pk`) with one-tap **Email** or **WhatsApp**.
+- **Our solution:** **SnapCity CIRO** (_Crisis Intelligence & Response Orchestrator_) — a **Flutter** citizen app and **FastAPI** agentic swarm that validates evidence with **Gemini 3.1 Flash-Lite**, fuses regional incident clusters, and simulates dispatch to authorities (e.g. **SSWMB Hyderabad** → `info@sswmb.gos.pk`) with one-tap **Email** or **WhatsApp**.
 - **The impact:** Junk uploads are rejected before they enter the pipeline; duplicate clusters and neighborhood telemetry sharpen severity; gamified civic scores and case tracking keep citizens engaged after submission.
 
 ---
@@ -55,7 +55,7 @@ _Turn every citizen snapshot into a validated, routed, and trackable municipal r
 
 ### Live Telemetry — God Mode Agentic Swarm Control Center
 
-Live-polling dashboard (`GET /api/v1/godmode/logs`, **2s interval**) streams NDJSON traces from **IngestionAgent**, **ContextAgent**, **ReasoningAgent**, **AuthorityFinderAgent**, and **DispatchAgent** during demos.
+Live-polling dashboard (`GET /api/v1/godmode/logs`, **2s interval**) streams NDJSON traces from the central **SupervisorAgent** and the specialized tools (**IngestionAgent**, **ContextAgent**, **ReasoningAgent**, and **DispatchAgent**) during processing.
 
 |                                       Telemetry Console                                        |                                        Agent Trace Stream                                        |
 | :--------------------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------------: |
@@ -94,69 +94,42 @@ Track **impact scores**, **local rank percentiles**, verified fixes, and **Evide
 | **Frontend**           | ![Flutter](https://img.shields.io/badge/Flutter-02569B?style=flat-square&logo=flutter&logoColor=white)            | Cross-platform UI — camera, map, cases, feed, God Mode viewer                     |
 | **Backend**            | ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)            | CIRO REST API — `/api/v1/report`, `/api/v1/cases`, `/api/v1/godmode/*`            |
 | **Database & Storage** | ![Supabase](https://img.shields.io/badge/Supabase-3FCF8E?style=flat-square&logo=supabase&logoColor=white)         | `uploads` bucket for evidence · `cases` table persistence                         |
-| **AI Core**            | ![Gemini](https://img.shields.io/badge/Gemini%202.5%20Flash-8E75B2?style=flat-square&logo=google&logoColor=white) | Agentic swarm — ingestion, context fusion, reasoning, authority routing, dispatch |
+| **AI Core**            | ![Gemini](https://img.shields.io/badge/Gemini%203.1%20Flash--Lite-8E75B2?style=flat-square&logo=google&logoColor=white) | Supervisor Agentic Swarm prioritizing `gemini-3.1-flash-lite` (with `gemini-2.5-flash` dual-fallback + local rules failsafe) |
 
 ---
 
 ## System Architecture
 
-%%{init: {'flowchart': {'useMaxWidth': true}}}%%
 ```mermaid
-flowchart TB
-    subgraph Citizen["📱 Flutter Citizen App"]
-        A1["📷 Capture civic photo"]
-        A2["🎙️ Record voice note"]
-        A3["☁️ Upload → Supabase uploads bucket"]
-        A4["📡 POST /api/v1/report"]
-        A1 --> A3
-        A2 --> A4
-        A3 --> A4
+graph TD
+    A[📱 Citizen App Payload] -->|POST /api/v1/report| B(⚡ CIRO API v1 Router)
+    B -->|Instantiate Payload| C{🤖 SupervisorAgent <br> Gemini LLM Brain}
+    
+    subgraph Swarm ["🛠️ Dynamic Agentic Swarm (Tools)"]
+        D[👁️ IngestionAgent <br> Gemini Vision]
+        E[🌐 ContextAgent <br> Signal Fusion]
+        G[🧠 ReasoningAgent <br> Safety Matrix]
+        H[🚒 DispatchAgent <br> Operations Planner]
     end
 
-    subgraph API["⚡ CIRO_Report_API · FastAPI"]
-        B["ReportPayload orchestration"]
-    end
-
-    subgraph Ingestion["👁️ IngestionAgent · Gemini 2.5 Flash"]
-        C1["Fetch image from Supabase URL"]
-        C2["Validate civic issue<br/>garbage · pothole · manhole · sewage"]
-        C3["Structural analysis + confidence score"]
-        C1 --> C2 --> C3
-    end
-
-    subgraph Context["🌐 ContextAgent"]
-        D1["Cluster with regional incidents"]
-        D2["Isolate location e.g. Orangi Town"]
-        D3["Weather · traffic · neighborhood events"]
-        D1 --> D2 --> D3
-    end
-
-    subgraph Reasoning["🧠 ReasoningAgent"]
-        R1["Threat reasoning · safety heuristics · severity"]
-    end
-
-    subgraph Dispatch["🚒 DispatchAgent"]
-        G1["Formal municipal notice + case ID"]
-        G2["Authority routing e.g. info@sswmb.gos.pk"]
-        G3["WhatsApp + Email templates"]
-        G1 --> G2 --> G3
-    end
-
-    subgraph Output["📬 Outcomes"]
-        H1["Persist → Supabase cases"]
-        H2["Flutter ticket · reward · map"]
-        H3["One-tap Email / WhatsApp"]
-    end
-
-    A4 --> B --> C1
-    C3 -->|invalid| X["❌ HTTP 400"]
-    C3 -->|valid| D1
-    D3 --> R1 --> G1
-    G3 --> H1 --> H2
-    G3 --> H3
+    C -->|1. validate_evidence| D
+    D -->|is_valid == false| X[❌ Reject: HTTP 400]
+    D -->|is_valid == true| C
+    
+    C <-->|2. fuse_context| E
+    C <-->|3. evaluate_threat_severity| G
+    C <-->|4. simulate_dispatch| H
+    
+    C -->|5. Compile Results| I[FastAPI Response Assembler]
+    I -->|Unified Response Layout| J[Citizen/Flutter Client]
+    
+    style C fill:#1a73e8,stroke:#333,stroke-width:2px,color:#fff
+    style Swarm fill:#f1f3f4,stroke:#dadce0,stroke-width:1px
+    style X fill:#ea4335,stroke:#c5221f,stroke-width:1px,color:#fff
+    style J fill:#34a853,stroke:#137333,stroke-width:1px,color:#fff
 ```
 
-**Swarm path:** Citizen payload → **CIRO_Report_API** → **IngestionAgent** → **ContextAgent** → **ReasoningAgent** → **DispatchAgent** (invokes `AuthorityFInder` tool) → Final Response
+**Swarm path:** Citizen payload ➡️ **CIRO_Report_API** ➡️ **SupervisorAgent** (coordinates dynamic execution loop invoking Ingestion, Context, Reasoning, and Dispatch Tools) ➡️ Unified JSON Response
 
 ---
 
