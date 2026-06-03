@@ -198,9 +198,13 @@ node flutter_web_server.mjs
 
 ### Backend (`backend/.env`)
 
-| Variable         | Required | Description                                      |
-| :--------------- | :------: | :----------------------------------------------- |
-| `GEMINI_API_KEY` |    ✅    | Google AI Studio key for all Gemini swarm agents |
+| Variable | Required | Description |
+| :--- | :---: | :--- |
+| `GEMINI_API_KEY` | ✅ | Google AI Studio key for all Gemini swarm agents |
+| `GOOGLE_MAPS_API_KEY` | ✅ | Google Maps API key used for routing and traffic telemetry |
+| `SUPABASE_URL` | ✅ | Supabase project URL for database connections |
+| `SUPABASE_SERVICE_ROLE_KEY` | ⚠️ | Highly recommended for backend DB write bypass (or fallback to `SUPABASE_ANON_KEY`) |
+| `SUPABASE_ANON_KEY` | ✅ | Anonymous key used as fallback for database connection |
 
 ```bash
 cd backend && cp .env.example .env
@@ -208,10 +212,10 @@ cd backend && cp .env.example .env
 
 ### Frontend (`frontend/.env`)
 
-| Variable            | Required | Description                               |
-| :------------------ | :------: | :---------------------------------------- |
-| `SUPABASE_URL`      |    ✅    | Supabase project URL                      |
-| `SUPABASE_ANON_KEY` |    ✅    | Anonymous key for `uploads` bucket writes |
+| Variable | Required | Description |
+| :--- | :---: | :--- |
+| `SUPABASE_URL` | ✅ | Supabase project URL |
+| `SUPABASE_ANON_KEY` | ✅ | Anonymous key for database and storage access |
 
 ### API base URL (`frontend/lib/services/api_service.dart`)
 
