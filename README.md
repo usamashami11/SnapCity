@@ -124,7 +124,7 @@ graph TD
     I -->|Unified Response Layout| J[Citizen/Flutter Client]
     
     style C fill:#1a73e8,stroke:#333,stroke-width:2px,color:#fff
-    style Swarm fill:#202124,stroke:#3c4043,stroke-width:1px,color:#fff
+    style Swarm fill:#202124,stroke:#3c4043,stroke-width:1px
     style X fill:#ea4335,stroke:#c5221f,stroke-width:1px,color:#fff
     style J fill:#34a853,stroke:#137333,stroke-width:1px,color:#fff
 ```
