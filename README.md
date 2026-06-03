@@ -34,7 +34,7 @@ _Turn every citizen snapshot into a validated, routed, and trackable municipal r
 ## The Problem & The Solution
 
 - **The problem:** Civic hazards are reported through fragmented channels with no validation, weak location context, and slow hand-offs to the right municipal authority.
-- **Our solution:** **SnapCity CIRO** (_Crisis Intelligence & Response Orchestrator_) — a **Flutter** citizen app and **FastAPI** agentic swarm that validates evidence with **Gemini 2.5 Flash**, fuses regional incident clusters, and simulates dispatch to authorities (e.g. **SSWMB Hyderabad** → `info@sswmb.gos.pk`) with one-tap **Email** or **WhatsApp**.
+- **Our solution:** **SnapCity CIRO** (_Crisis Intelligence & Response Orchestrator_) — a **Flutter** citizen app and **FastAPI** agentic swarm that validates evidence with **Gemini 3.1 Flash-Lite**, fuses regional incident clusters, and simulates dispatch to authorities (e.g. **SSWMB Hyderabad** → `info@sswmb.gos.pk`) with one-tap **Email** or **WhatsApp**.
 - **The impact:** Junk uploads are rejected before they enter the pipeline; duplicate clusters and neighborhood telemetry sharpen severity; gamified civic scores and case tracking keep citizens engaged after submission.
 
 ---
@@ -100,62 +100,33 @@ Track **impact scores**, **local rank percentiles**, verified fixes, and **Evide
 
 ## System Architecture
 
-%%{init: {'flowchart': {'useMaxWidth': true}}}%%
 ```mermaid
-flowchart TB
-    subgraph Citizen["📱 Flutter Citizen App"]
-        A1["📷 Capture civic photo"]
-        A2["🎙️ Record voice note"]
-        A3["☁️ Upload → Supabase uploads bucket"]
-        A4["📡 POST /api/v1/report"]
-        A1 --> A3
-        A2 --> A4
-        A3 --> A4
+graph TD
+    A[📱 Citizen App Payload] -->|POST /api/v1/report| B(⚡ CIRO API v1 Router)
+    B -->|Instantiate Payload| C{🤖 SupervisorAgent <br> Gemini LLM Brain}
+    
+    subgraph Swarm ["🛠️ Dynamic Agentic Swarm (Tools)"]
+        D[👁️ IngestionAgent <br> Gemini Vision]
+        E[🌐 ContextAgent <br> Signal Fusion]
+        G[🧠 ReasoningAgent <br> Safety Matrix]
+        H[🚒 DispatchAgent <br> Operations Planner]
     end
 
-    subgraph API["⚡ CIRO_Report_API · FastAPI"]
-        B["SupervisorAgent Loop <br> Gemini Function-Calling Brain"]
-    end
-
-    subgraph Tool1["👁️ IngestionAgent Tool"]
-        C1["validate_evidence"]
-        C2["Gemini 3.1 Flash-Lite <br> Multimodal Vision Analysis"]
-        C1 --> C2
-    end
-
-    subgraph Tool2["🌐 ContextAgent Tool"]
-        D1["fuse_context"]
-        D2["Weather + OSM Traffic Geocoding"]
-        D1 --> D2
-    end
-
-    subgraph Tool3["🧠 ReasoningAgent Tool"]
-        E1["evaluate_threat_severity"]
-        E2["Safety Heuristics & Dynamic Severity"]
-        E1 --> E2
-    end
-
-    subgraph Tool4["🚒 DispatchAgent Tool"]
-        F1["simulate_dispatch"]
-        F2["Responder Matching & Copy Templates"]
-        F1 --> F2
-    end
-
-    subgraph Output["📬 Outcomes"]
-        H1["Persist → Supabase cases"]
-        H2["Flutter ticket · reward · map"]
-        H3["One-tap Email / WhatsApp"]
-    end
-
-    A4 --> B
-    B <-->|1. validate| Tool1
-    C2 -->|Invalid Selfie Rejection| X["❌ HTTP 400 Bad Request"]
-    B <-->|2. fuse context| Tool2
-    B <-->|3. reasoning| Tool3
-    B <-->|4. dispatch| Tool4
-    B -->|5. response summary| H1
-    H1 --> H2
-    H1 --> H3
+    C -->|1. validate_evidence| D
+    D -->|is_valid == false| X[❌ Reject: HTTP 400]
+    D -->|is_valid == true| C
+    
+    C <-->|2. fuse_context| E
+    C <-->|3. evaluate_threat_severity| G
+    C <-->|4. simulate_dispatch| H
+    
+    C -->|5. Compile Results| I[FastAPI Response Assembler]
+    I -->|Unified Response Layout| J[Citizen/Flutter Client]
+    
+    style C fill:#1a73e8,stroke:#333,stroke-width:2px,color:#fff
+    style Swarm fill:#f1f3f4,stroke:#dadce0,stroke-width:1px
+    style X fill:#ea4335,stroke:#c5221f,stroke-width:1px,color:#fff
+    style J fill:#34a853,stroke:#137333,stroke-width:1px,color:#fff
 ```
 
 **Swarm path:** Citizen payload ➡️ **CIRO_Report_API** ➡️ **SupervisorAgent** (coordinates dynamic execution loop invoking Ingestion, Context, Reasoning, and Dispatch Tools) ➡️ Unified JSON Response
