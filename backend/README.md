@@ -12,21 +12,31 @@ CIRO coordinates a dynamic, autonomous **Agentic Swarm** overseen by a central *
 
 ```mermaid
 graph TD
-    A[Citizen App Payload] -->|POST /api/v1/report| B(CIRO API v1 Router)
-    B -->|Instantiate Payload| C{SupervisorAgent <br> Gemini LLM Brain}
-    C -->|Tool Call: validate_evidence| D[IngestionAgent <br> Gemini Vision]
-    D -->|Tool Response| C
-    C -->|Rejection Guardrail Stop if is_valid is False| X[Reject: HTTP 400]
-    C -->|Tool Call: fuse_context| E[ContextAgent <br> Signal Fusion]
-    E -->|Tool Response| C
-    C -->|Tool Call: find_authority_routing| F[AuthorityFinderService]
-    F -->|Tool Response| C
-    C -->|Tool Call: evaluate_threat_severity| G[ReasoningAgent]
-    G -->|Tool Response| C
-    C -->|Tool Call: simulate_dispatch| H[DispatchAgent]
-    H -->|Tool Response| C
-    C -->|Orchestration Complete Summary| I[FastAPI Response Assembler]
+    A[📱 Citizen App Payload] -->|POST /api/v1/report| B(⚡ CIRO API v1 Router)
+    B -->|Instantiate Payload| C{🤖 SupervisorAgent <br> Gemini LLM Brain}
+    
+    subgraph Swarm ["🛠️ Dynamic Agentic Swarm (Tools)"]
+        D[👁️ IngestionAgent <br> Gemini Vision]
+        E[🌐 ContextAgent <br> Signal Fusion]
+        G[🧠 ReasoningAgent <br> Safety Matrix]
+        H[🚒 DispatchAgent <br> Operations Planner]
+    end
+
+    C -->|1. validate_evidence| D
+    D -->|is_valid == false| X[❌ Reject: HTTP 400]
+    D -->|is_valid == true| C
+    
+    C <-->|2. fuse_context| E
+    C <-->|3. evaluate_threat_severity| G
+    C <-->|4. simulate_dispatch| H
+    
+    C -->|5. Compile Results| I[FastAPI Response Assembler]
     I -->|Unified Response Layout| J[Citizen/Flutter Client]
+    
+    style C fill:#1a73e8,stroke:#333,stroke-width:2px,color:#fff
+    style Swarm fill:#f1f3f4,stroke:#dadce0,stroke-width:1px
+    style X fill:#ea4335,stroke:#c5221f,stroke-width:1px,color:#fff
+    style J fill:#34a853,stroke:#137333,stroke-width:1px,color:#fff
 ```
 
 
