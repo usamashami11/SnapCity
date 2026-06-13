@@ -14,13 +14,14 @@ _Turn every citizen snapshot into a validated, routed, and trackable municipal r
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Supabase](https://img.shields.io/badge/Database-Supabase-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
 [![Gemini](https://img.shields.io/badge/AI-Google%20Gemini-8E75B2?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
-
+[![Download APK](https://img.shields.io/badge/Download-APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://drive.google.com/file/d/16qprQ9-lT0fo3xmAWc_z2NkncBxGA-YV/view?usp=sharing)
+[![Watch Demo](https://img.shields.io/badge/Watch-Demo-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/TDBB8MGlqZw)
 <br/>
 
 
   <!-- BANNER PLACEHOLDER — Uncomment when your designer delivers the hero asset: -->
 
-  <img src="frontend/assets/outputs/banner.png" alt="SnapCity Hero Banner" width="100%"/>
+  <img src="./frontend/assets/banner.png" alt="SnapCity Hero Banner" width="100%"/>
 
 
 <br/>
@@ -36,6 +37,15 @@ _Turn every citizen snapshot into a validated, routed, and trackable municipal r
 - **The problem:** Civic hazards are reported through fragmented channels with no validation, weak location context, and slow hand-offs to the right municipal authority.
 - **Our solution:** **SnapCity CIRO** (_Crisis Intelligence & Response Orchestrator_) — a **Flutter** citizen app and **FastAPI** agentic swarm that validates evidence with **Gemini 3.1 Flash-Lite**, fuses regional incident clusters, and simulates dispatch to authorities (e.g. **SSWMB Hyderabad** → `info@sswmb.gos.pk`) with one-tap **Email** or **WhatsApp**.
 - **The impact:** Junk uploads are rejected before they enter the pipeline; duplicate clusters and neighborhood telemetry sharpen severity; gamified civic scores and case tracking keep citizens engaged after submission.
+
+---
+
+## Download & Demo
+
+- 📱 **Android APK:** [Download here](https://drive.google.com/file/d/16qprQ9-lT0fo3xmAWc_z2NkncBxGA-YV/view?usp=sharing)
+- 🎥 **Demo video:** [Watch on YouTube](https://youtu.be/TDBB8MGlqZw)
+
+> APK is shared via Google Drive (set to "Anyone with the link can download"). Android may prompt you to allow installs from unknown sources.
 
 ---
 
@@ -249,11 +259,11 @@ SnapCity/
 
 <br/>
 
-_Google Antigravity Hackathon · SnapCity CIRO_
+_AI for Civic Innovation Hackathon · SnapCity CIRO_
 
 <div align="center">
 
-_Contributors: Syeda Umaima · Usama Shami · Hassan Raza · Faizan Maqbool · Arham Nabi_
+_Contributors: Syeda Umaima · Usama Shami · Hassan Raza · Faizan Maqbool_
 
 
 </div>
